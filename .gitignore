@@ -1,0 +1,13 @@
+node_modules/
+dist/
+
+# Rust build output (all target dirs, including target-* variants)
+target/
+target-*/
+
+.env
+.env.*
+!.env.example
+*.log
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,24 @@
+{
+  "name": "passvault",
+  "private": true,
+  "version": "0.2.2",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "svelte-check && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.5.0",
+    "@tauri-apps/plugin-opener": "^2.2.7",
+    "svelte": "^5.25.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "@tauri-apps/cli": "^2.5.0",
+    "svelte-check": "^4.1.5",
+    "typescript": "~5.7.2",
+    "vite": "^6.2.0"
+  }
+}
