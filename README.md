@@ -1,4 +1,4 @@
-# Passvault
+# PassVault
 
 Passvault is a Windows-first, local-only password manager. The vault is encrypted on this device; there is no account, server, telemetry, or sync in v1.
 
