@@ -144,13 +144,14 @@
   let commandQuery = '';
   let commandIndex = 0;
   let commandInput: HTMLInputElement | undefined;
+  let commandList: HTMLElement | undefined;
   let commandResults: PaletteCommand[] = [];
 
   $: if (typeof document !== 'undefined') document.documentElement.dataset.theme = theme;
   $: selected = entries.find((entry) => entry.id === selectedId);
   $: autoLockPaused = editorOpen || importPreview !== null || restoreOpen || commandOpen || nativeDialogOpen || importBusy;
   $: autoLockSeconds = Math.ceil(autoLockRemaining / 1000);
-  $: lockWarning = !keepUnlocked && mode === 'ready' && autoLockRemaining > 0 && autoLockRemaining <= autoLockWarningMs;
+  $: lockWarning = !keepUnlocked && !autoLockPaused && mode === 'ready' && autoLockRemaining > 0 && autoLockRemaining <= autoLockWarningMs;
   $: if (commandOpen) commandResults = buildPaletteCommands(commandQuery);
   $: emailSuggestions = [...new Map(entries
     .flatMap((entry) => [entry.email, entry.username])
@@ -198,9 +199,13 @@
           void refreshTotp(selected.totpSecret, selected.id);
         }
       }
-      if (!keepUnlocked && !autoLockPaused) {
-        autoLockRemaining = Math.max(0, autoLockMs - (now - lastActivity));
-        if (autoLockRemaining === 0) void lockNow();
+      if (!keepUnlocked) {
+        if (autoLockPaused) {
+          lastActivity = now - (autoLockMs - autoLockRemaining);
+        } else {
+          autoLockRemaining = Math.max(0, autoLockMs - (now - lastActivity));
+          if (autoLockRemaining === 0) void lockNow();
+        }
       }
     }, 1000);
     const activity = () => {
@@ -339,6 +344,10 @@
     try {
       await invoke('set_keep_unlocked', { enabled });
       keepUnlocked = enabled;
+      if (!enabled) {
+        lastActivity = Date.now();
+        autoLockRemaining = autoLockMs;
+      }
     } catch (cause) {
       keepUnlocked = !enabled;
       error = errorMessage(cause);
@@ -388,6 +397,8 @@
     } finally {
       keepUnlocked = false;
       entries = [];
+      listLoading = false;
+      detailScrollPositions.clear();
       selectedId = '';
       editing = blankEntry();
       editorOpen = false;
@@ -771,19 +782,29 @@
     commandResults = [];
   }
 
+  function revealActiveCommand() {
+    void tick().then(() => {
+      commandList?.querySelector<HTMLElement>('.command-item.active')?.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
   function handleCommandKeydown(event: KeyboardEvent) {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       if (commandResults.length) commandIndex = (commandIndex + 1) % commandResults.length;
+      revealActiveCommand();
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
       if (commandResults.length) commandIndex = (commandIndex - 1 + commandResults.length) % commandResults.length;
+      revealActiveCommand();
     } else if (event.key === 'Home') {
       event.preventDefault();
       commandIndex = 0;
+      revealActiveCommand();
     } else if (event.key === 'End') {
       event.preventDefault();
       commandIndex = Math.max(0, commandResults.length - 1);
+      revealActiveCommand();
     } else if (event.key === 'Enter') {
       event.preventDefault();
       const command = commandResults[commandIndex];
@@ -887,7 +908,7 @@
 {#if mode === 'loading'}
   <main class="gate loading-gate" in:fade={{ duration: reducedMotion ? 0 : motion.base }} out:fade={{ duration: reducedMotion ? 0 : motion.fast }}>
     <div class="vault-loader" role="status" aria-live="polite">
-      <div class="loader-orbit" aria-hidden="true"><i></i><i></i><i></i><span class="loader-brand">p</span></div>
+      <div class="loader-orbit" aria-hidden="true"><i></i><i></i><i></i><span class="loader-brand"><span class="brand-glyph">p</span></span></div>
       <p class="loader-label">Opening your vault…</p>
       <p class="loader-sub">Decrypting locally on this device</p>
     </div>
@@ -895,7 +916,7 @@
 {:else if mode === 'create' || mode === 'unlock'}
   <main class="gate" in:fade={{ duration: reducedMotion ? 0 : motion.base }} out:fade={{ duration: reducedMotion ? 0 : motion.fast }}>
     <div class="gate-card">
-      <div class="brand-lockup"><span class="brand-mark">p</span><span>passvault</span></div>
+      <div class="brand-lockup"><span class="brand-mark"><span class="brand-glyph">p</span></span><span>passvault</span></div>
       <span class="eyebrow">PRIVATE BY DESIGN</span>
       <h1>{mode === 'create' ? 'Your passwords, under your control.' : 'Welcome back.'}</h1>
       <p class="gate-copy">{mode === 'create' ? 'Create a strong master password. It encrypts your vault and is never sent anywhere.' : 'Unlock your encrypted vault. Your data stays on this device.'}</p>
@@ -918,7 +939,7 @@
 {:else}
   <main class="app-shell" class:settings-mode={view === 'settings'} in:fade={{ duration: reducedMotion ? 0 : motion.slow }} out:fade={{ duration: reducedMotion ? 0 : motion.fast }}>
     <aside class="sidebar">
-      <div class="brand-lockup sidebar-brand"><span class="brand-mark">p</span><span class="brand-name">passvault</span></div>
+      <div class="brand-lockup sidebar-brand"><span class="brand-mark"><span class="brand-glyph">p</span></span><span class="brand-name">passvault</span></div>
       <div class="search-box">
         <span class="search-icon">⌕</span>
         <input bind:this={searchInput} bind:value={search} placeholder="Search vault" aria-label="Search vault" aria-keyshortcuts="/ Control+K" />
@@ -945,7 +966,7 @@
     <section class="list-pane" aria-label="Vault items">
       <header class="list-header">
         <div><span class="eyebrow">YOUR PASSWORDS</span><h1>{view === 'favorites' ? 'Favorites' : view === 'authenticator' ? 'Authenticator' : 'All items'}</h1></div>
-        <button class="add-button" aria-label="Add item" title="Add item" onclick={openNewEntry}>+</button>
+        <button class="add-button" aria-label="Add item" title="Add item" onclick={openNewEntry}><span class="add-glyph">+</span></button>
       </header>
       <div class="list-caption">
         <span>{filteredEntries.length} {filteredEntries.length === 1 ? 'ITEM' : 'ITEMS'}</span>
@@ -1034,7 +1055,7 @@
               <span class="import-icon">↥</span>
               <span><strong>Import from Proton Pass</strong><small>Select your Proton Pass CSV export</small></span>
               <span class="import-arrow">→</span>
-              <input type="file" accept=".csv,text/csv" onchange={handleCsv} />
+              <input type="file" accept=".csv,text/csv" onclick={() => nativeDialogOpen = true} onchange={handleCsv} />
             </label>
           </section>
           <p class="settings-note"><span class="status-dot"></span>Theme changes never affect vault encryption or stored passwords.</p>
@@ -1209,6 +1230,30 @@
         {#if error}<p class="error-message">{error}</p>{/if}
         <footer class="modal-footer"><button type="button" class="secondary-button" disabled={restoreBusy} onclick={() => restoreOpen = false}>Cancel</button><button class="primary-button" type="submit" disabled={restoreBusy || !restorePassword}>{restoreBusy ? 'Restoring…' : 'Choose backup and restore'} <span aria-hidden="true">↥</span></button></footer>
       </form>
+    </div>
+  </div>
+{/if}
+
+{#if commandOpen}
+  <div class="command-backdrop" role="presentation" onclick={(event) => { if (event.target === event.currentTarget) closeCommandPalette(); }} in:fade={{ duration: reducedMotion ? 0 : motion.fast }} out:fade={{ duration: reducedMotion ? 0 : motion.fast }}>
+    <div class="command-palette" role="dialog" aria-modal="true" aria-label="Command palette" tabindex="-1" use:dialogAction={closeCommandPalette} in:fly={{ y: reducedMotion ? 0 : -10, duration: reducedMotion ? 0 : motion.slow, easing: easeSpring }} out:fade={{ duration: reducedMotion ? 0 : motion.fast }}>
+      <div class="command-search">
+        <span class="command-search-icon" aria-hidden="true">⌕</span>
+        <input bind:this={commandInput} bind:value={commandQuery} oninput={() => commandIndex = 0} onkeydown={handleCommandKeydown} placeholder="Search items or run a command…" aria-label="Command palette search" autocomplete="off" spellcheck="false" />
+        <kbd>Esc</kbd>
+      </div>
+      <div class="command-list" role="listbox" aria-label="Commands" bind:this={commandList}>
+        {#each commandResults as command, index (command.id)}
+          <button type="button" class="command-item" class:active={index === commandIndex} role="option" aria-selected={index === commandIndex} onmouseenter={() => commandIndex = index} onclick={() => runPaletteCommand(command)}>
+            <span class="command-icon" aria-hidden="true">{command.icon}</span>
+            <span class="command-copy"><strong>{command.label}</strong><small>{command.hint}</small></span>
+            {#if index === commandIndex}<span class="command-enter" aria-hidden="true">↵</span>{/if}
+          </button>
+        {:else}
+          <div class="command-empty">No matches. Try another search.</div>
+        {/each}
+      </div>
+      <footer class="command-footer"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> run</span><span><kbd>Ctrl</kbd><kbd>K</kbd> toggle</span></footer>
     </div>
   </div>
 {/if}
