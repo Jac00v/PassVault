@@ -9,18 +9,18 @@ This document describes the implementation observed in the repository. It is not
 - The backend stores an optional unlocked vault behind a `Mutex`; vault entry reads and mutations require unlocked state. Locking drops this backend state.
 - Optional persistent unlock stores only the derived vault key after protecting it with Windows DPAPI for the current Windows user. On startup, Passvault tries that key against the encrypted vault; disabling the option or manually locking removes the protected key.
 - Selected Rust key, password, plaintext, and entry buffers use `Zeroizing` or `zeroize` cleanup.
-- CSP `connect-src` is limited to Tauri IPC endpoints. The current source has no application network client or sync implementation. The app may open a saved HTTP(S) URL in the system browser through the opener plugin.
+- CSP `connect-src` is limited to Tauri IPC endpoints. The current source has no application network client or sync implementation. The app may open a saved HTTP(S) URL in the system browser through the opener plugin; the capability scope allows only `http` and `https` URLs.
 - The UI previews a CSV before importing it, and backup export copies the encrypted file rather than exporting plaintext entries.
 
 ## Important Limits
 
 - While unlocked, decrypted entries are held in Rust and cloned/serialized over IPC into JavaScript state. JavaScript strings, webview state, and all cloned/transient copies cannot be reliably zeroized by this application.
-- Clipboard cleanup after 30 seconds is best effort. It clears only when the clipboard still contains the value Passvault copied, and clipboard access can fail. The close handler starts cleanup without waiting for it.
+- Clipboard cleanup after 30 seconds is best effort. It clears only when the clipboard still contains the value Passvault copied, and clipboard access can fail. The close handler waits for cleanup before the window closes, but a denied clipboard permission can still leave the value in place.
 - Auto-lock is triggered by 15 minutes without `pointerdown` or `keydown` in this webview. It is not an operating-system idle monitor.
 - When persistent unlock is enabled, the 15-minute inactivity auto-lock is disabled so the vault stays unlocked until the user manually locks it or turns the option off. Anyone with access to the same Windows user account can launch Passvault and access the vault while the protected key is present. DPAPI protection is not a substitute for requiring the master password at every launch.
 - Losing the master password means losing access; there is no password reset or recovery mechanism. Restore replaces the current local vault. Backups should be protected separately.
-- Import duplicate checks are heuristic and preview metadata is supplied back by the frontend at commit time. Do not represent duplicate matching as exact or independently revalidated by the backend.
-- `save_entry` performs limited validation (notably a nonblank title and defaults for missing ID/kind). Do not assume every field is deeply validated by Rust.
+- Import duplicate checks are heuristic and preview metadata is supplied back by the frontend at commit time. The backend validates incoming entry IDs, titles, and kinds but does not recompute duplicate matching, so do not represent duplicate matching as exact.
+- `save_entry` and `import_entries` perform limited validation (notably titles, missing IDs/kinds, and ID collisions). Do not assume every field is deeply validated by Rust.
 - The implementation's zeroization does not erase every plaintext copy. For example, strings can be cloned for IPC, and ordinary frontend strings are garbage collected.
 - The configured CSP and source architecture support local-first operation, but do not by themselves prove absence of all runtime traffic from every dependency or environment.
 

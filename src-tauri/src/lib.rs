@@ -86,6 +86,7 @@ struct VaultFile {
 
 struct UnlockedVault {
     key: Zeroizing<[u8; 32]>,
+    salt: [u8; 16],
     data: VaultData,
 }
 
@@ -182,20 +183,22 @@ impl VaultFile {
         if self.version != VAULT_VERSION {
             return Err("This vault version is not supported".to_string());
         }
+        let salt = decode_fixed::<16>(&self.salt)?;
         let nonce = decode_fixed::<24>(&self.nonce)?;
         let ciphertext = BASE64
             .decode(&self.ciphertext)
             .map_err(|_| "The vault file is invalid or damaged".to_string())?;
         let cipher = XChaCha20Poly1305::new_from_slice(&key[..])
             .map_err(|_| "Could not initialize vault encryption".to_string())?;
-        let mut plaintext = cipher
-            .decrypt(XNonce::from_slice(&nonce), ciphertext.as_ref())
-            .map_err(|_| "Incorrect master password or damaged vault".to_string())?;
-        let data = serde_json::from_slice(&plaintext)
+        let plaintext = Zeroizing::new(
+            cipher
+                .decrypt(XNonce::from_slice(&nonce), ciphertext.as_ref())
+                .map_err(|_| "Incorrect master password or damaged vault".to_string())?,
+        );
+        let data = serde_json::from_slice(plaintext.as_slice())
             .map_err(|_| "The decrypted vault contents are invalid".to_string())?;
-        plaintext.zeroize();
 
-        Ok(UnlockedVault { key, data })
+        Ok(UnlockedVault { key, salt, data })
     }
 
     fn persist(&self, path: &Path) -> Result<(), String> {
@@ -356,11 +359,7 @@ fn load_remembered_key(path: &Path) -> Result<Zeroizing<[u8; 32]>, String> {
 }
 
 fn persist_unlocked(state: &AppState, vault: &UnlockedVault) -> Result<(), String> {
-    let file = VaultFile::from_data(
-        &vault.data,
-        &vault.key,
-        &decode_fixed::<16>(&VaultFile::read(&state.vault_path)?.salt)?,
-    )?;
+    let file = VaultFile::from_data(&vault.data, &vault.key, &vault.salt)?;
     file.persist(&state.vault_path)
 }
 
@@ -385,7 +384,8 @@ fn create_vault(master_password: String, state: tauri::State<'_, AppState>) -> R
     let data = VaultData::default();
     let file = VaultFile::from_data(&data, &key, &salt)?;
     file.persist(&state.vault_path)?;
-    let new_vault = UnlockedVault { key, data };
+    let _ = remove_remembered_key(&state.remembered_key_path);
+    let new_vault = UnlockedVault { key, salt, data };
     *lock_state(&state)? = Some(new_vault);
     Ok(())
 }
@@ -462,9 +462,8 @@ fn set_keep_unlocked(enabled: bool, state: tauri::State<'_, AppState>) -> Result
 
 #[tauri::command]
 fn lock_vault(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    remove_remembered_key(&state.remembered_key_path)?;
     *lock_state(&state)? = None;
-    Ok(())
+    remove_remembered_key(&state.remembered_key_path)
 }
 
 #[tauri::command]
@@ -495,17 +494,26 @@ fn save_entry(
     let vault = guard
         .as_mut()
         .ok_or_else(|| "Unlock the vault first".to_string())?;
-    if let Some(index) = vault
+    let previous = vault
         .data
         .entries
         .iter()
         .position(|saved| saved.id == entry.id)
-    {
-        vault.data.entries[index] = entry.clone();
+        .map(|index| (index, vault.data.entries[index].clone()));
+    if let Some((index, _)) = &previous {
+        vault.data.entries[*index] = entry.clone();
     } else {
         vault.data.entries.push(entry.clone());
     }
-    persist_unlocked(&state, vault)?;
+    if let Err(error) = persist_unlocked(&state, vault) {
+        match previous {
+            Some((index, saved)) => vault.data.entries[index] = saved,
+            None => {
+                vault.data.entries.pop();
+            }
+        }
+        return Err(error);
+    }
     Ok(entry)
 }
 
@@ -515,8 +523,19 @@ fn delete_entry(entry_id: String, state: tauri::State<'_, AppState>) -> Result<(
     let vault = guard
         .as_mut()
         .ok_or_else(|| "Unlock the vault first".to_string())?;
-    vault.data.entries.retain(|entry| entry.id != entry_id);
-    persist_unlocked(&state, vault)
+    let removed = vault
+        .data
+        .entries
+        .iter()
+        .position(|entry| entry.id == entry_id)
+        .map(|index| (index, vault.data.entries.remove(index)));
+    if let Err(error) = persist_unlocked(&state, vault) {
+        if let Some((index, entry)) = removed {
+            vault.data.entries.insert(index, entry);
+        }
+        return Err(error);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -573,6 +592,7 @@ fn preview_csv(
         "createtime",
         "modifytime",
         "createdat",
+        "modifiedat",
         "updatedat",
     ];
     let unsupported: Vec<String> = columns
@@ -600,6 +620,17 @@ fn preview_csv(
             }
         }
     }
+    let username_column = find_column(&columns, &["username", "user", "login"]);
+    let email_column = find_column(&columns, &["email", "emailaddress"]);
+    let password_column = find_column(&columns, &["password", "pass"]);
+    let url_column = find_column(&columns, &["url", "website", "webaddress"]);
+    let notes_column = find_column(&columns, &["note", "notes", "description"]);
+    let totp_column = find_column(&columns, &["totp", "totpsecret", "otp", "authenticator"]);
+    let kind_column = find_column(&columns, &["type", "itemtype"]);
+    let vault_column = find_column(&columns, &["vault"]);
+    let created_column = find_column(&columns, &["createtime", "createdat"]);
+    let modified_column = find_column(&columns, &["modifytime", "modifiedat", "updatedat"]);
+    let favorite_column = find_column(&columns, &["favorite", "favourite"]);
     let mut entries = Vec::new();
     let mut duplicate_ids = Vec::new();
     let mut duplicate_matches = Vec::new();
@@ -616,32 +647,30 @@ fn preview_csv(
                 continue;
             }
         };
-        let value = |aliases: &[&str]| -> String {
-            find_column(&columns, aliases)
+        let value = |index: Option<usize>| -> String {
+            index
                 .and_then(|index| record.get(index))
                 .unwrap_or("")
                 .trim()
                 .to_string()
         };
-        let title = value(&["name", "title", "item"]);
-        let username = value(&["username", "user", "login"]);
-        let email = value(&["email", "emailaddress"]);
-        let password = value(&["password", "pass"]);
-        let url = value(&["url", "website", "webaddress"]);
-        let notes = value(&["note", "notes", "description"]);
-        let totp_secret = value(&["totp", "totpsecret", "otp", "authenticator"]);
-        let kind_value = value(&["type", "itemtype"])
+        let title = value(title_column);
+        let username = value(username_column);
+        let email = value(email_column);
+        let password = value(password_column);
+        let url = value(url_column);
+        let notes = value(notes_column);
+        let totp_secret = value(totp_column);
+        let kind_value = value(kind_column)
             .chars()
             .filter(|character| character.is_ascii_alphanumeric())
             .flat_map(char::to_lowercase)
             .collect::<String>();
-        let source_vault = value(&["vault"]);
-        let source_created_at = value(&["createtime", "createdat"]);
-        let source_modified_at = value(&["modifytime", "modifiedat", "updatedat"]);
+        let source_vault = value(vault_column);
+        let source_created_at = value(created_column);
+        let source_modified_at = value(modified_column);
         let favorite = matches!(
-            value(&["favorite", "favourite"])
-                .to_ascii_lowercase()
-                .as_str(),
+            value(favorite_column).to_ascii_lowercase().as_str(),
             "true" | "1" | "yes"
         );
 
@@ -783,17 +812,44 @@ fn import_entries(
     let vault = guard
         .as_mut()
         .ok_or_else(|| "Unlock the vault first".to_string())?;
-    let duplicate_ids: HashSet<String> = duplicate_ids.into_iter().collect();
-    let matches: HashMap<String, String> = duplicate_matches
+    let previous_entries = vault.data.entries.clone();
+    let mut duplicate_ids: HashSet<String> = duplicate_ids.into_iter().collect();
+    let mut matches: HashMap<String, String> = duplicate_matches
         .into_iter()
         .map(|matched| (matched.incoming_id, matched.existing_id))
+        .collect();
+    let mut known_ids: HashSet<String> = vault
+        .data
+        .entries
+        .iter()
+        .map(|entry| entry.id.clone())
         .collect();
     let mut result = ImportResult {
         added: 0,
         updated: 0,
         skipped: 0,
     };
-    for incoming in entries {
+    for mut incoming in entries {
+        if incoming.id.is_empty() || known_ids.contains(&incoming.id) {
+            let previous_id = incoming.id.clone();
+            let new_id = Uuid::new_v4().to_string();
+            if !previous_id.is_empty() {
+                if let Some(existing_id) = matches.remove(&previous_id) {
+                    matches.insert(new_id.clone(), existing_id);
+                }
+                if duplicate_ids.remove(&previous_id) {
+                    duplicate_ids.insert(new_id.clone());
+                }
+            }
+            incoming.id = new_id;
+        }
+        known_ids.insert(incoming.id.clone());
+        if incoming.title.trim().is_empty() {
+            incoming.title = "Untitled".to_string();
+        }
+        if incoming.kind.is_empty() {
+            incoming.kind = "login".to_string();
+        }
         let is_duplicate = duplicate_ids.contains(&incoming.id);
         if mode == "skip" && is_duplicate {
             result.skipped += 1;
@@ -818,7 +874,10 @@ fn import_entries(
         vault.data.entries.push(incoming);
         result.added += 1;
     }
-    persist_unlocked(&state, vault)?;
+    if let Err(error) = persist_unlocked(&state, vault) {
+        vault.data.entries = previous_entries;
+        return Err(error);
+    }
     Ok(result)
 }
 
@@ -1021,9 +1080,11 @@ fn random_character(characters: &[u8], previous: Option<u8>) -> Result<u8, Strin
 
 #[tauri::command]
 fn export_backup(state: tauri::State<'_, AppState>) -> Result<Option<String>, String> {
-    let guard = lock_state(&state)?;
-    if guard.is_none() {
-        return Err("Unlock the vault before making a backup".to_string());
+    {
+        let guard = lock_state(&state)?;
+        if guard.is_none() {
+            return Err("Unlock the vault before making a backup".to_string());
+        }
     }
     let Some(destination) = rfd::FileDialog::new()
         .add_filter("Passvault encrypted backup", &["passvault"])
@@ -1270,11 +1331,13 @@ mod tests {
         assert!(!serialized.contains("not-plaintext-on-disk"));
         let unlocked = file.decrypt("correct horse battery staple").unwrap();
         assert_eq!(unlocked.data.entries[0].password, "not-plaintext-on-disk");
+        assert_eq!(unlocked.salt, salt);
         let unlocked_with_key = file.decrypt_with_key(Zeroizing::new(*key)).unwrap();
         assert_eq!(
             unlocked_with_key.data.entries[0].password,
             "not-plaintext-on-disk"
         );
+        assert_eq!(unlocked_with_key.salt, salt);
         assert!(file.decrypt("incorrect password").is_err());
     }
 

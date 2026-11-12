@@ -1297,3 +1297,30 @@ html[data-theme="dark"] .status-dot { background: var(--accent); box-shadow: non
 html[data-theme="dark"] .toast { border-color: var(--line-strong); color: var(--text-primary); background: var(--surface-raised); }
 html[data-theme="dark"] .login-submit { color: #171717; background: var(--accent); }
 html[data-theme="dark"] .login-submit:hover:not(:disabled) { background: var(--accent-hover); }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.search-box input:focus-visible,
+.login-title-field input:focus-visible,
+.login-composer .login-row-content input:focus-visible,
+.login-composer .login-row-content textarea:focus-visible {
+  outline: 3px solid rgba(94, 163, 153, .72);
+  outline-offset: 2px;
+}
+
+html[data-theme="oled"] .search-box input:focus-visible,
+html[data-theme="oled"] .login-title-field input:focus-visible,
+html[data-theme="oled"] .login-composer .login-row-content input:focus-visible,
+html[data-theme="oled"] .login-composer .login-row-content textarea:focus-visible {
+  outline-color: rgba(209, 213, 211, .72);
+}

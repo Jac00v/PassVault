@@ -23,17 +23,17 @@ index.html -> src/main.ts -> src/App.svelte <-> Tauri IPC -> src-tauri/src/lib.r
 
 ## Frontend State And Flows
 
-`App.svelte` owns the application state. The vault gate mode is `loading`, `create`, `unlock`, or `ready`. On mount, `vault_status` selects create or unlock. Creating/unlocking calls the corresponding Rust command, then `get_entries` loads decrypted entries into frontend memory. Locking attempts clipboard cleanup, calls `lock_vault`, clears frontend entry/editor/import/TOTP state, and returns to unlock mode.
+`App.svelte` owns the application state. The vault gate mode is `loading`, `create`, `unlock`, or `ready`. On mount, `vault_status` selects create or unlock. Creating/unlocking calls the corresponding Rust command, then `get_entries` loads decrypted entries into frontend memory. Locking attempts clipboard cleanup, calls `lock_vault`, clears frontend entry/editor/import/TOTP state even if key removal reports an error, and returns to unlock mode.
 
 Entries are rendered in a three-pane workspace: navigation, filtered list, and details. `filteredEntries` filters by view and a case-insensitive search across title, username, email, URL, and source vault, then sorts favorites first and title alphabetically. It deliberately does not search passwords or notes. Appearance is stored in `localStorage` under `passvault-theme`. The optional keep-unlocked setting is represented by a Windows DPAPI-protected derived key in app-local data, not by a stored master password. When enabled, startup attempts auto-unlock and the inactivity auto-lock is skipped; manual lock removes the protected key and turns the option off.
 
 Creating/editing and favoriting use `save_entry`; deleting uses `delete_entry`. These operations update the encrypted file on the Rust side, then the UI updates its in-memory list. Keep selection and TOTP refresh behavior coherent when changing these flows.
 
-The inactivity timer runs once per second and locks after 15 minutes since the last `pointerdown` or `keydown`. This is UI-event-based, not a system-wide idle detector. TOTP refreshes at the current code-step boundary. Copy operations use the browser clipboard and schedule a conditional clear attempt after 30 seconds.
+The inactivity timer runs once per second while the vault is ready and locks after 15 minutes since the last `pointerdown` or `keydown`. This is UI-event-based, not a system-wide idle detector. TOTP refreshes when the current code-step counter changes, rather than requiring a tick to land on an exact boundary second. Copy operations use the browser clipboard and schedule a conditional clear attempt after 30 seconds.
 
-The window uses native Windows decorations and requests Windows 11 rounded corners through DWM, with an opaque native/WebView background color. A close-request listener starts best-effort clipboard cleanup without cancelling the close.
+The window uses native Windows decorations and requests Windows 11 rounded corners through DWM, with an opaque native/WebView background color. A close-request listener awaits best-effort clipboard cleanup before the default close proceeds.
 
-CSV import reads the selected file as text in the frontend, asks Rust for a preview, presents warnings/possible duplicates, then submits the selected import mode. Backups use native Rust file dialogs and copy/restore the encrypted vault file. Restore replaces the current local vault.
+CSV import reads the selected file as text in the frontend, asks Rust for a preview, presents warnings/possible duplicates, then submits the selected import mode. Backups use native Rust file dialogs and copy/restore the encrypted vault file. Restore replaces the current local vault and is reachable from the sidebar and from the unlock screen using a password field.
 
 ## IPC Command Surface
 
@@ -46,7 +46,7 @@ The definitive command registration is the `tauri::generate_handler!` list in `s
 | `unlock_vault` | Decrypt an existing vault | No |
 | `try_auto_unlock_vault` | Unlock using the optional Windows-protected key | No |
 | `set_keep_unlocked` | Add or remove the optional protected key | Enabling requires unlocked state |
-| `lock_vault` | Remove the protected key and drop unlocked state | No |
+| `lock_vault` | Drop unlocked state, then remove the protected key | No |
 | `get_entries` | Return a clone of all entries | Yes |
 | `save_entry` | Insert or replace an entry and persist | Yes |
 | `delete_entry` | Remove an entry and persist | Yes |
@@ -72,7 +72,7 @@ Current vault format version is `1`. A few newer entry metadata fields have serd
 - CSV headers are normalized by removing non-ASCII-alphanumeric characters and lowercasing. Rust maps known aliases for name/title, username, email, password, URL, notes, TOTP, favorite, item type, source vault, and timestamps. Unknown columns produce a warning rather than being imported.
 - Empty rows are skipped. Rows without a title but with other content become `Untitled` and produce a warning. Unrecognized item types default to `login`; imported entries receive new UUIDs.
 - Duplicate detection is heuristic, using normalized title with username/email, title with URL, and URL with username/email signatures. Ambiguous matches are flagged as possible duplicates but do not get an automatic update target.
-- Import mode `all` adds every preview entry. `skip` omits flagged possible duplicates. `update` merges only nonempty incoming fields into a uniquely matched existing entry; the existing favorite is preserved (`existing.favorite OR incoming.favorite`). An unmatched/ambiguous duplicate is skipped in update mode. The commit command trusts duplicate metadata returned to it by the frontend; it does not rerun preview matching.
+- Import mode `all` adds every preview entry. `skip` omits flagged possible duplicates. `update` merges only nonempty incoming fields into a uniquely matched existing entry; the existing favorite is preserved (`existing.favorite OR incoming.favorite`). An unmatched/ambiguous duplicate is skipped in update mode. The commit command trusts duplicate metadata returned to it by the frontend; it does not rerun preview matching, but it does validate entry IDs (generating replacements for empty or colliding values), titles, and empty kinds.
 - TOTP accepts raw secrets or `otpauth://totp/` URLs. Defaults are SHA-1, six digits, and a 30-second step; URL parameters can select SHA-1/SHA-256/SHA-512, 1-9 digits, and a period from 1 through 65,535 seconds. Secret normalization removes whitespace, hyphens, underscores, and trailing padding; if Base32 decoding fails, the normalized value is treated as raw bytes.
 - Password generation accepts lengths 12-128. It includes lowercase, uppercase, and digits, optionally includes symbols from `!@#$%^&*`, and avoids adjacent repeated characters. The UI currently requests length 20 with symbols enabled.
 

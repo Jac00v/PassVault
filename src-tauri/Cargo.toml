@@ -29,3 +29,8 @@ uuid = { version = "1", features = ["v4"] }
 url = "2"
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Security_Cryptography"] }
 zeroize = { version = "1", features = ["derive"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
