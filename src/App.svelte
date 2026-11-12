@@ -16,6 +16,11 @@
     url: string;
     notes: string;
     totpSecret: string;
+    cardNumber: string;
+    cardHolder: string;
+    cardExpiry: string;
+    cardCvv: string;
+    cardPin: string;
     favorite: boolean;
     kind: string;
     sourceVault: string;
@@ -101,6 +106,8 @@
   let search = '';
   let view: View = readFilter();
   let showPassword = false;
+  let showCardNumber = false;
+  let showCardSecrets = false;
   let copied = '';
   let clipboardValue = '';
   let totpCode = '';
@@ -165,13 +172,13 @@
       const query = search.trim().toLowerCase();
       filteredEntries = entries
         .filter((entry) => view === 'favorites' ? entry.favorite : view === 'authenticator' ? !!entry.totpSecret : true)
-        .filter((entry) => `${entry.title} ${entry.username} ${entry.email} ${entry.url} ${entry.sourceVault}`.toLowerCase().includes(query))
+        .filter((entry) => `${entry.title} ${entry.username} ${entry.email} ${entry.url} ${entry.cardHolder} ${entry.cardNumber} ${entry.cardExpiry} ${entry.sourceVault}`.toLowerCase().includes(query))
         .sort((a, b) => Number(b.favorite) - Number(a.favorite) || (sortOrder === 'latest-used' ? (entryUsage[b.id] ?? 0) - (entryUsage[a.id] ?? 0) : 0) || titleCollator.compare(a.title, b.title));
     }
   }
 
   function blankEntry(): Entry {
-    return { id: '', title: '', username: '', email: '', password: '', url: '', notes: '', totpSecret: '', favorite: false, kind: 'login', sourceVault: '', sourceCreatedAt: '', sourceModifiedAt: '' };
+    return { id: '', title: '', username: '', email: '', password: '', url: '', notes: '', totpSecret: '', cardNumber: '', cardHolder: '', cardExpiry: '', cardCvv: '', cardPin: '', favorite: false, kind: 'login', sourceVault: '', sourceCreatedAt: '', sourceModifiedAt: '' };
   }
 
   onMount(() => {
@@ -571,8 +578,28 @@
 
   function hideRevealedPassword() {
     showPassword = false;
+    showCardNumber = false;
+    showCardSecrets = false;
     if (passwordRevealTimer) clearTimeout(passwordRevealTimer);
     passwordRevealTimer = undefined;
+  }
+
+  function toggleCardNumber() {
+    showCardNumber = !showCardNumber;
+  }
+
+  function toggleCardSecrets() {
+    showCardSecrets = !showCardSecrets;
+  }
+
+  function maskedCardNumber(value: string): string {
+    const compact = value.replace(/\s+/g, '');
+    if (compact.length <= 8) return '•••• •••• •••• ••••';
+    return `${compact.slice(0, 4)} •••• •••• ${compact.slice(-4)}`;
+  }
+
+  function formattedCardNumber(value: string): string {
+    return value.replace(/\s+/g, '').replace(/(.{4})/g, '$1 ').trim();
   }
 
   function detailKey(): string {
@@ -1093,6 +1120,13 @@
           {/if}
 
           <div class="detail-fields">
+            {#if selected.kind === 'creditCard'}
+              {#if selected.cardHolder}<div class="detail-field"><button class="field-copy-surface" aria-label="Copy name on card" onclick={() => copySecret(selected!.cardHolder, 'cardHolder')}></button><div class="field-top"><span>NAME ON CARD</span><span class="copy-feedback" class:done={copied === 'cardHolder'} aria-hidden="true"><svg viewBox="0 0 16 16"><rect class="glyph-copy" x="5.5" y="5.5" width="7.5" height="7.5" rx="2"></rect><path class="glyph-check" d="M3.5 8.5 6.5 11.5 12.5 5"></path></svg></span></div><p class="detail-value">{selected.cardHolder}</p></div>{/if}
+              {#if selected.cardNumber}<div class="detail-field"><button class="field-copy-surface" aria-label="Copy card number" onclick={() => copySecret(selected!.cardNumber, 'cardNumber')}></button><div class="field-top"><span>CARD NUMBER</span><div class="field-meta"><span class="copy-feedback" class:done={copied === 'cardNumber'} aria-hidden="true"><svg viewBox="0 0 16 16"><rect class="glyph-copy" x="5.5" y="5.5" width="7.5" height="7.5" rx="2"></rect><path class="glyph-check" d="M3.5 8.5 6.5 11.5 12.5 5"></path></svg></span><div class="field-actions"><button onclick={toggleCardNumber}>{showCardNumber ? 'Hide' : 'Reveal'}</button></div></div></div><p class="detail-value card-number-value">{showCardNumber ? formattedCardNumber(selected.cardNumber) : maskedCardNumber(selected.cardNumber)}</p></div>{/if}
+              {#if selected.cardExpiry}<div class="detail-field"><button class="field-copy-surface" aria-label="Copy expiration date" onclick={() => copySecret(selected!.cardExpiry, 'cardExpiry')}></button><div class="field-top"><span>EXPIRATION DATE</span><span class="copy-feedback" class:done={copied === 'cardExpiry'} aria-hidden="true"><svg viewBox="0 0 16 16"><rect class="glyph-copy" x="5.5" y="5.5" width="7.5" height="7.5" rx="2"></rect><path class="glyph-check" d="M3.5 8.5 6.5 11.5 12.5 5"></path></svg></span></div><p class="detail-value">{selected.cardExpiry}</p></div>{/if}
+              {#if selected.cardCvv}<div class="detail-field"><button class="field-copy-surface" aria-label="Copy security code" onclick={() => copySecret(selected!.cardCvv, 'cardCvv')}></button><div class="field-top"><span>SECURITY CODE</span><div class="field-meta"><span class="copy-feedback" class:done={copied === 'cardCvv'} aria-hidden="true"><svg viewBox="0 0 16 16"><rect class="glyph-copy" x="5.5" y="5.5" width="7.5" height="7.5" rx="2"></rect><path class="glyph-check" d="M3.5 8.5 6.5 11.5 12.5 5"></path></svg></span><div class="field-actions"><button onclick={toggleCardSecrets}>{showCardSecrets ? 'Hide' : 'Reveal'}</button></div></div></div><p class="detail-value secret-value" class:revealed={showCardSecrets}>{showCardSecrets ? selected.cardCvv : '••••'}</p></div>{/if}
+              {#if selected.cardPin}<div class="detail-field"><button class="field-copy-surface" aria-label="Copy PIN" onclick={() => copySecret(selected!.cardPin, 'cardPin')}></button><div class="field-top"><span>PIN</span><div class="field-meta"><span class="copy-feedback" class:done={copied === 'cardPin'} aria-hidden="true"><svg viewBox="0 0 16 16"><rect class="glyph-copy" x="5.5" y="5.5" width="7.5" height="7.5" rx="2"></rect><path class="glyph-check" d="M3.5 8.5 6.5 11.5 12.5 5"></path></svg></span><div class="field-actions"><button onclick={toggleCardSecrets}>{showCardSecrets ? 'Hide' : 'Reveal'}</button></div></div></div><p class="detail-value secret-value" class:revealed={showCardSecrets}>{showCardSecrets ? selected.cardPin : '••••'}</p></div>{/if}
+            {/if}
             {#if selected.username}<div class="detail-field"><button class="field-copy-surface" aria-label="Copy username" onclick={() => copySecret(selected!.username, 'username')}></button><div class="field-top"><span>USERNAME</span><span class="copy-feedback" class:done={copied === 'username'} aria-hidden="true"><svg viewBox="0 0 16 16"><rect class="glyph-copy" x="5.5" y="5.5" width="7.5" height="7.5" rx="2"></rect><path class="glyph-check" d="M3.5 8.5 6.5 11.5 12.5 5"></path></svg></span></div><p class="detail-value">{selected.username}</p></div>{/if}
             {#if selected.email}<div class="detail-field"><button class="field-copy-surface" aria-label="Copy email" onclick={() => copySecret(selected!.email, 'email')}></button><div class="field-top"><span>EMAIL</span><span class="copy-feedback" class:done={copied === 'email'} aria-hidden="true"><svg viewBox="0 0 16 16"><rect class="glyph-copy" x="5.5" y="5.5" width="7.5" height="7.5" rx="2"></rect><path class="glyph-check" d="M3.5 8.5 6.5 11.5 12.5 5"></path></svg></span></div><p class="detail-value">{selected.email}</p></div>{/if}
             {#if selected.password}<div class="detail-field"><button class="field-copy-surface" aria-label="Copy password" onclick={() => copySecret(selected!.password, 'password')}></button><div class="field-top"><span>PASSWORD</span><div class="field-meta"><span class="copy-feedback" class:done={copied === 'password'} aria-hidden="true"><svg viewBox="0 0 16 16"><rect class="glyph-copy" x="5.5" y="5.5" width="7.5" height="7.5" rx="2"></rect><path class="glyph-check" d="M3.5 8.5 6.5 11.5 12.5 5"></path></svg></span><div class="field-actions"><button onclick={togglePasswordReveal}>{showPassword ? 'Hide' : 'Reveal'}</button></div></div></div><p class="detail-value secret-value" class:revealed={showPassword}>{showPassword ? selected.password : '••••••••••••••••'}</p>{#if showPassword}<span class="reveal-countdown">Hides automatically</span>{/if}</div>{/if}
@@ -1101,7 +1135,7 @@
             {#if selected.sourceVault}<div class="detail-field"><div class="field-top"><span>PROTON VAULT</span></div><p>{selected.sourceVault}</p></div>{/if}
             {#if selected.sourceCreatedAt}<div class="detail-field"><div class="field-top"><span>ORIGINAL CREATION DATE</span></div><p>{protonDate(selected.sourceCreatedAt)}</p></div>{/if}
             {#if selected.sourceModifiedAt}<div class="detail-field"><div class="field-top"><span>LAST MODIFIED IN PROTON</span></div><p>{protonDate(selected.sourceModifiedAt)}</p></div>{/if}
-            {#if !selected.username && !selected.email && !selected.password && !selected.url && !selected.notes && !selected.totpSecret && !selected.sourceVault && !selected.sourceCreatedAt && !selected.sourceModifiedAt}<div class="detail-empty">Nothing saved in this item yet.</div>{/if}
+            {#if !selected.username && !selected.email && !selected.password && !selected.url && !selected.notes && !selected.totpSecret && !selected.cardNumber && !selected.cardHolder && !selected.cardExpiry && !selected.cardCvv && !selected.cardPin && !selected.sourceVault && !selected.sourceCreatedAt && !selected.sourceModifiedAt}<div class="detail-empty">Nothing saved in this item yet.</div>{/if}
           </div>
           <div class="detail-security"><span class="security-check">✓</span><span>Encrypted and stored locally</span><span class="detail-separator">·</span><span class:security-warning={!keepUnlocked && autoLockRemaining <= autoLockWarningMs}>{autoLockLabel()}</span>{#if !keepUnlocked && !autoLockPaused}<span class="autolock-meter" aria-hidden="true"><span style={`width:${Math.round((autoLockRemaining / autoLockMs) * 100)}%`}></span></span>{/if}</div>
         </div>
@@ -1186,6 +1220,17 @@
           {#if editing.kind === 'alias'}
             <label>Email address<input bind:value={editing.email} autocomplete="off" list="saved-email-suggestions" /></label>
             <label>Website<input bind:value={editing.url} placeholder="https://" /></label>
+          {:else if editing.kind === 'creditCard'}
+            <section class="editor-section" aria-label="Card details">
+              <div class="editor-section-heading"><span>CARD DETAILS</span><small>Stored encrypted on this device</small></div>
+              <div class="editor-grid">
+                <label class="editor-field-wide">Name on card<input bind:value={editing.cardHolder} autocomplete="off" spellcheck="false" placeholder="Name as shown on card" /></label>
+                <label class="editor-field-wide">Card number<input bind:value={editing.cardNumber} autocomplete="off" inputmode="numeric" spellcheck="false" placeholder="0000 0000 0000 0000" /></label>
+                <label>Expiration date<input bind:value={editing.cardExpiry} autocomplete="off" inputmode="numeric" spellcheck="false" placeholder="MM/YY" /></label>
+                <label>Security code<input bind:value={editing.cardCvv} autocomplete="off" inputmode="numeric" spellcheck="false" placeholder="CVV" /></label>
+                <label>PIN<input bind:value={editing.cardPin} autocomplete="off" inputmode="numeric" spellcheck="false" placeholder="PIN" /></label>
+              </div>
+            </section>
           {:else if editing.kind !== 'note'}
             <p class="field-hint">Imported fields are preserved in the notes below.</p>
           {/if}

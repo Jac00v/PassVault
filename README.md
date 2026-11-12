@@ -5,10 +5,10 @@ Passvault is a Windows-first, local-only password manager. The vault is encrypte
 ## Features
 
 - Create and unlock a vault protected by a master password.
-- Store logins, secure notes, and TOTP authenticator keys.
+- Store logins, secure notes, TOTP authenticator keys, and credit cards with dedicated number, expiration, cardholder, security code, and PIN fields.
 - Use a Proton-inspired glass workspace in a rounded, frameless Windows window, with optional SVG refraction accents and a CSS blur fallback.
 - Switch between persistent light and dark themes in Settings.
-- Import Proton Pass CSV exports with a preview, unsupported-column warnings, and possible-duplicate detection. Login email, username, TOTP, notes, item type, source vault, and original timestamps are retained; alias, card, identity, and custom-item note payloads are preserved.
+- Import Proton Pass CSV exports with a preview, unsupported-column warnings, and possible-duplicate detection. Login email, username, TOTP, notes, item type, source vault, and original timestamps are retained; card note payloads are mapped into card fields, while alias, identity, and custom-item note payloads are preserved.
 - Generate passwords with guaranteed selected character classes and no adjacent repeated characters, search and favorite items, and copy secrets with a 30-second clipboard clear attempt.
 - Automatically lock after 15 minutes of inactivity.
 - Export and restore an encrypted `.passvault` backup.

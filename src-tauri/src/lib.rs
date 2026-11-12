@@ -51,6 +51,16 @@ struct VaultEntry {
     url: String,
     notes: String,
     totp_secret: String,
+    #[serde(default)]
+    card_number: String,
+    #[serde(default)]
+    card_holder: String,
+    #[serde(default)]
+    card_expiry: String,
+    #[serde(default)]
+    card_cvv: String,
+    #[serde(default)]
+    card_pin: String,
     favorite: bool,
     kind: String,
     #[serde(default)]
@@ -70,6 +80,11 @@ impl Drop for VaultEntry {
         self.url.zeroize();
         self.notes.zeroize();
         self.totp_secret.zeroize();
+        self.card_number.zeroize();
+        self.card_holder.zeroize();
+        self.card_expiry.zeroize();
+        self.card_cvv.zeroize();
+        self.card_pin.zeroize();
         self.source_vault.zeroize();
         self.source_created_at.zeroize();
         self.source_modified_at.zeroize();
@@ -472,7 +487,16 @@ fn get_entries(state: tauri::State<'_, AppState>) -> Result<Vec<VaultEntry>, Str
     let vault = guard
         .as_ref()
         .ok_or_else(|| "Unlock the vault first".to_string())?;
-    Ok(vault.data.entries.clone())
+    Ok(vault
+        .data
+        .entries
+        .iter()
+        .cloned()
+        .map(|mut entry| {
+            populate_card_fields(&mut entry);
+            entry
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -594,6 +618,23 @@ fn preview_csv(
         "createdat",
         "modifiedat",
         "updatedat",
+        "cardnumber",
+        "number",
+        "cardno",
+        "cardholder",
+        "cardholdername",
+        "nameoncard",
+        "holdername",
+        "expirationdate",
+        "expirydate",
+        "expiry",
+        "cardexpiry",
+        "securitycode",
+        "cvv",
+        "cvc",
+        "cardsecuritycode",
+        "pin",
+        "cardpin",
     ];
     let unsupported: Vec<String> = columns
         .keys()
@@ -631,6 +672,20 @@ fn preview_csv(
     let created_column = find_column(&columns, &["createtime", "createdat"]);
     let modified_column = find_column(&columns, &["modifytime", "modifiedat", "updatedat"]);
     let favorite_column = find_column(&columns, &["favorite", "favourite"]);
+    let card_number_column = find_column(&columns, &["cardnumber", "number", "cardno"]);
+    let card_holder_column = find_column(
+        &columns,
+        &["cardholdername", "cardholder", "nameoncard", "holdername"],
+    );
+    let card_expiry_column = find_column(
+        &columns,
+        &["expirationdate", "expirydate", "expiry", "cardexpiry"],
+    );
+    let card_cvv_column = find_column(
+        &columns,
+        &["securitycode", "cvv", "cvc", "cardsecuritycode"],
+    );
+    let card_pin_column = find_column(&columns, &["pin", "cardpin"]);
     let mut entries = Vec::new();
     let mut duplicate_ids = Vec::new();
     let mut duplicate_matches = Vec::new();
@@ -673,6 +728,11 @@ fn preview_csv(
             value(favorite_column).to_ascii_lowercase().as_str(),
             "true" | "1" | "yes"
         );
+        let card_number = value(card_number_column);
+        let card_holder = value(card_holder_column);
+        let card_expiry = value(card_expiry_column);
+        let card_cvv = value(card_cvv_column);
+        let card_pin = value(card_pin_column);
 
         if title.is_empty()
             && username.is_empty()
@@ -681,6 +741,11 @@ fn preview_csv(
             && url.is_empty()
             && notes.is_empty()
             && totp_secret.is_empty()
+            && card_number.is_empty()
+            && card_holder.is_empty()
+            && card_expiry.is_empty()
+            && card_cvv.is_empty()
+            && card_pin.is_empty()
         {
             skipped += 1;
             continue;
@@ -707,7 +772,7 @@ fn preview_csv(
         } else {
             notes
         };
-        let entry = VaultEntry {
+        let mut entry = VaultEntry {
             id: Uuid::new_v4().to_string(),
             title: if title.is_empty() {
                 "Untitled".to_string()
@@ -720,12 +785,25 @@ fn preview_csv(
             url,
             notes,
             totp_secret,
+            card_number: String::new(),
+            card_holder: String::new(),
+            card_expiry: String::new(),
+            card_cvv: String::new(),
+            card_pin: String::new(),
             favorite,
             kind: kind.to_string(),
             source_vault,
             source_created_at,
             source_modified_at,
         };
+        if kind == "creditCard" {
+            entry.card_number = card_number;
+            entry.card_holder = card_holder;
+            entry.card_expiry = card_expiry;
+            entry.card_cvv = card_cvv;
+            entry.card_pin = card_pin;
+            populate_card_fields(&mut entry);
+        }
         let signatures = entry_signatures(&entry);
         if signatures
             .iter()
@@ -795,6 +873,66 @@ fn find_column(columns: &HashMap<String, usize>, aliases: &[&str]) -> Option<usi
     aliases
         .iter()
         .find_map(|alias| columns.get(*alias).copied())
+}
+
+fn card_note_value(note: &serde_json::Value, aliases: &[&str]) -> Option<String> {
+    note.as_object()?.iter().find_map(|(key, value)| {
+        let normalized = normalize_header(key);
+        if !aliases.contains(&normalized.as_str()) {
+            return None;
+        }
+        let text = value.as_str()?.trim();
+        (!text.is_empty()).then(|| text.to_string())
+    })
+}
+
+fn populate_card_fields(entry: &mut VaultEntry) {
+    if entry.kind != "creditCard" {
+        return;
+    }
+    let Ok(note) = serde_json::from_str::<serde_json::Value>(&entry.notes) else {
+        return;
+    };
+    let number_aliases = ["cardnumber", "number", "cardno"];
+    let holder_aliases = ["cardholdername", "cardholder", "nameoncard", "holdername"];
+    let expiry_aliases = ["expirationdate", "expirydate", "expiry", "cardexpiry"];
+    let cvv_aliases = ["securitycode", "cvv", "cvc", "cardsecuritycode"];
+    let pin_aliases = ["pin", "cardpin"];
+    if entry.card_number.is_empty() {
+        entry.card_number =
+            card_note_value(&note, &number_aliases).unwrap_or_default();
+    }
+    if entry.card_holder.is_empty() {
+        entry.card_holder =
+            card_note_value(&note, &holder_aliases).unwrap_or_default();
+    }
+    if entry.card_expiry.is_empty() {
+        entry.card_expiry =
+            card_note_value(&note, &expiry_aliases).unwrap_or_default();
+    }
+    if entry.card_cvv.is_empty() {
+        entry.card_cvv = card_note_value(&note, &cvv_aliases).unwrap_or_default();
+    }
+    if entry.card_pin.is_empty() {
+        entry.card_pin = card_note_value(&note, &pin_aliases).unwrap_or_default();
+    }
+    let all_aliases = [
+        number_aliases.as_slice(),
+        holder_aliases.as_slice(),
+        expiry_aliases.as_slice(),
+        cvv_aliases.as_slice(),
+        pin_aliases.as_slice(),
+    ]
+    .concat();
+    let fully_mapped = note.as_object().is_some_and(|object| {
+        !object.is_empty()
+            && object
+                .keys()
+                .all(|key| all_aliases.contains(&normalize_header(key).as_str()))
+    });
+    if fully_mapped {
+        entry.notes.clear();
+    }
 }
 
 #[tauri::command]
@@ -892,6 +1030,11 @@ fn merge_entry(existing: &mut VaultEntry, incoming: &VaultEntry) {
         (&mut existing.url, &incoming.url),
         (&mut existing.notes, &incoming.notes),
         (&mut existing.totp_secret, &incoming.totp_secret),
+        (&mut existing.card_number, &incoming.card_number),
+        (&mut existing.card_holder, &incoming.card_holder),
+        (&mut existing.card_expiry, &incoming.card_expiry),
+        (&mut existing.card_cvv, &incoming.card_cvv),
+        (&mut existing.card_pin, &incoming.card_pin),
         (&mut existing.source_vault, &incoming.source_vault),
         (&mut existing.source_created_at, &incoming.source_created_at),
         (
@@ -1237,7 +1380,8 @@ mod tests {
         assert_eq!(preview.entries[1].kind, "alias");
         assert_eq!(preview.entries[1].email, "alias@example.com");
         assert_eq!(preview.entries[2].kind, "creditCard");
-        assert!(preview.entries[2].notes.contains("1234"));
+        assert_eq!(preview.entries[2].card_number, "1234");
+        assert!(preview.entries[2].notes.is_empty());
         assert_eq!(preview.entries[3].kind, "note");
         assert_eq!(preview.entries[3].notes, "Router details");
     }
@@ -1352,6 +1496,45 @@ mod tests {
         assert!(entry.source_vault.is_empty());
         assert!(entry.source_created_at.is_empty());
         assert!(entry.source_modified_at.is_empty());
+        assert!(entry.card_number.is_empty());
+        assert!(entry.card_holder.is_empty());
+        assert!(entry.card_expiry.is_empty());
+        assert!(entry.card_cvv.is_empty());
+        assert!(entry.card_pin.is_empty());
+    }
+
+    #[test]
+    fn proton_card_notes_are_mapped_into_card_fields() {
+        let csv = concat!(
+            "type,name,url,email,username,password,note,totp,createTime,modifyTime,vault\n",
+            "creditCard,Travel card,,,,,\"{\"\"cardNumber\"\":\"\"4111111111111111\"\",\"\"cardholderName\"\":\"\"Ada Lovelace\"\",\"\"expirationDate\"\":\"\"12/29\"\",\"\"securityCode\"\":\"\"123\"\",\"\"pin\"\":\"\"4321\"\"}\",,1700000000,1700000001,Personal\n",
+        );
+        let preview = preview_csv(csv.to_string(), Vec::new()).unwrap();
+
+        let card = &preview.entries[0];
+        assert_eq!(card.kind, "creditCard");
+        assert_eq!(card.card_number, "4111111111111111");
+        assert_eq!(card.card_holder, "Ada Lovelace");
+        assert_eq!(card.card_expiry, "12/29");
+        assert_eq!(card.card_cvv, "123");
+        assert_eq!(card.card_pin, "4321");
+        assert!(card.notes.is_empty());
+    }
+
+    #[test]
+    fn card_columns_are_imported_without_json_notes() {
+        let csv = concat!(
+            "type,name,cardnumber,cardholdername,expirationdate,securitycode,pin\n",
+            "creditCard,Office card,4000000000000002,Grace Hopper,01/30,456,9876\n",
+        );
+        let preview = preview_csv(csv.to_string(), Vec::new()).unwrap();
+
+        let card = &preview.entries[0];
+        assert_eq!(card.card_number, "4000000000000002");
+        assert_eq!(card.card_holder, "Grace Hopper");
+        assert_eq!(card.card_expiry, "01/30");
+        assert_eq!(card.card_cvv, "456");
+        assert_eq!(card.card_pin, "9876");
     }
 
     #[test]

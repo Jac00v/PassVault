@@ -358,6 +358,7 @@ button:focus-visible {
 .detail-field p { margin: 8px 0 0; color: #31475f; font-size: 11px; line-height: 1.65; overflow-wrap: anywhere; white-space: pre-wrap; }
 .detail-field .detail-value { position: relative; z-index: 2; margin: 8px 0 0; pointer-events: none; }
 .detail-field .secret-value { font-family: "Segoe UI Variable", "Segoe UI", sans-serif; letter-spacing: 2px; }
+.detail-field .card-number-value { font-variant-numeric: tabular-nums; letter-spacing: 1.4px; overflow-wrap: normal; word-spacing: 2px; }
 .detail-empty { padding: 24px 17px; border: 1px solid rgba(255, 255, 255, .75); border-radius: 13px; color: #75879c; background: rgba(255, 255, 255, .35); font-size: 10px; }
 .detail-security { display: flex; align-items: center; gap: 7px; margin-top: 14px; color: #73859a; font-size: 9px; }
 .security-check { display: grid; width: 15px; height: 15px; place-items: center; border: 1px solid rgba(255, 255, 255, .85); border-radius: 50%; color: #357d69; background: rgba(226, 246, 237, .74); font-size: 9px; }
