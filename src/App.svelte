@@ -115,10 +115,11 @@
   let remaining = 30;
   let totpStep = 30;
   let lastTotpCounter = -1;
+  let createMenuOpen = false;
   let editorOpen = false;
   let editing: Entry = blankEntry();
   let editPasswordVisible = false;
-  let showMoreLoginFields = false;
+  let showMoreEntryFields = false;
   let loginIdentifier = '';
   let importPreview: Preview | null = null;
   let importBusy = false;
@@ -156,7 +157,7 @@
 
   $: if (typeof document !== 'undefined') document.documentElement.dataset.theme = theme;
   $: selected = entries.find((entry) => entry.id === selectedId);
-  $: autoLockPaused = editorOpen || importPreview !== null || restoreOpen || commandOpen || nativeDialogOpen || importBusy;
+  $: autoLockPaused = createMenuOpen || editorOpen || importPreview !== null || restoreOpen || commandOpen || nativeDialogOpen || importBusy;
   $: autoLockSeconds = Math.ceil(autoLockRemaining / 1000);
   $: lockWarning = !keepUnlocked && !autoLockPaused && mode === 'ready' && autoLockRemaining > 0 && autoLockRemaining <= autoLockWarningMs;
   $: if (commandOpen) commandResults = buildPaletteCommands(commandQuery);
@@ -227,13 +228,13 @@
         if (commandOpen) {
           event.preventDefault();
           closeCommandPalette();
-        } else if (mode === 'ready' && !editorOpen && !importPreview && !restoreOpen) {
+        } else if (mode === 'ready' && !createMenuOpen && !editorOpen && !importPreview && !restoreOpen) {
           event.preventDefault();
           openCommandPalette();
         }
         return;
       }
-      if (event.key === '/' && mode === 'ready' && !typing && !editorOpen && !importPreview && !restoreOpen && !commandOpen) {
+      if (event.key === '/' && mode === 'ready' && !typing && !createMenuOpen && !editorOpen && !importPreview && !restoreOpen && !commandOpen) {
         event.preventDefault();
         searchInput?.focus();
       }
@@ -408,6 +409,7 @@
       detailScrollPositions.clear();
       selectedId = '';
       editing = blankEntry();
+      createMenuOpen = false;
       editorOpen = false;
       importPreview = null;
       importBusy = false;
@@ -430,11 +432,22 @@
     }
   }
 
-  function openNewEntry() {
-    editing = blankEntry();
+  function openCreateMenu() {
+    if (view === 'settings') {
+      setView('all');
+    } else if (selectedId && window.matchMedia('(max-width: 800px)').matches) {
+      backToList();
+    }
+    createMenuOpen = true;
+    error = '';
+  }
+
+  function startNewEntry(kind: 'login' | 'creditCard' | 'note' | 'custom') {
+    createMenuOpen = false;
+    editing = { ...blankEntry(), kind };
     loginIdentifier = '';
     editPasswordVisible = false;
-    showMoreLoginFields = false;
+    showMoreEntryFields = false;
     editorOpen = true;
     error = '';
   }
@@ -443,9 +456,29 @@
     editing = { ...entry };
     loginIdentifier = entry.username || entry.email;
     editPasswordVisible = false;
-    showMoreLoginFields = true;
+    showMoreEntryFields = true;
     editorOpen = true;
     error = '';
+  }
+
+  function setEntryKind(kind: string) {
+    editing.kind = kind;
+    if (kind === 'login') loginIdentifier = editing.username || editing.email;
+  }
+
+  function entryNoun(kind: string): string {
+    switch (kind) {
+      case 'login': return 'login';
+      case 'creditCard': return 'card';
+      case 'note': return 'note';
+      case 'alias': return 'email alias';
+      case 'identity': return 'identity';
+      default: return 'item';
+    }
+  }
+
+  function composerSubmitLabel(): string {
+    return `${editing.id ? 'Save' : 'Create'} ${entryNoun(editing.kind)}`;
   }
 
   function setLoginIdentifier(value: string) {
@@ -743,9 +776,9 @@
     const addCommand: PaletteCommand = {
       id: 'add-item',
       label: 'Add item',
-      hint: 'Create a new login or secure item',
+      hint: 'Create a new login, card, or note',
       icon: '+',
-      run: () => openNewEntry(),
+      run: () => openCreateMenu(),
     };
     const lockCommand: PaletteCommand = {
       id: 'lock-vault',
@@ -888,7 +921,7 @@
     const focusable = () => Array.from(node.querySelectorAll<HTMLElement>(
       'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
     )).filter((element) => element.offsetParent !== null);
-    const initial = node.querySelector<HTMLElement>('input:not([type="hidden"]), textarea, select') ?? focusable()[0] ?? node;
+    const initial = node.querySelector<HTMLElement>('[data-autofocus]') ?? node.querySelector<HTMLElement>('input:not([type="hidden"]), textarea, select') ?? focusable()[0] ?? node;
     initial.focus();
     const handleKeydown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -919,6 +952,46 @@
       destroy() {
         node.removeEventListener('keydown', handleKeydown);
         previouslyFocused?.focus();
+      },
+    };
+  }
+
+  function createMenuAction(node: HTMLElement) {
+    const button = node.closest('.create-menu-anchor')?.querySelector<HTMLElement>('.add-button');
+    const items = () => Array.from(node.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+    const focusAt = (index: number) => {
+      const list = items();
+      if (!list.length) return;
+      list[(index + list.length) % list.length]?.focus();
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (node.contains(target) || button?.contains(target)) return;
+      createMenuOpen = false;
+    };
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        createMenuOpen = false;
+        button?.focus();
+        return;
+      }
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return;
+      event.preventDefault();
+      const list = items();
+      if (!list.length) return;
+      const current = list.indexOf(document.activeElement as HTMLElement);
+      if (event.key === 'Home') focusAt(0);
+      else if (event.key === 'End') focusAt(list.length - 1);
+      else focusAt(current < 0 ? (event.key === 'ArrowDown' ? 0 : list.length - 1) : current + (event.key === 'ArrowDown' ? 1 : -1));
+    };
+    window.addEventListener('pointerdown', handlePointerDown);
+    node.addEventListener('keydown', handleKeydown);
+    focusAt(0);
+    return {
+      destroy() {
+        window.removeEventListener('pointerdown', handlePointerDown);
+        node.removeEventListener('keydown', handleKeydown);
       },
     };
   }
@@ -993,7 +1066,17 @@
     <section class="list-pane" aria-label="Vault items">
       <header class="list-header">
         <div><span class="eyebrow">YOUR PASSWORDS</span><h1>{view === 'favorites' ? 'Favorites' : view === 'authenticator' ? 'Authenticator' : 'All items'}</h1></div>
-        <button class="add-button" aria-label="Add item" title="Add item" onclick={openNewEntry}><span class="add-glyph">+</span></button>
+        <div class="create-menu-anchor">
+          <button class="add-button" aria-label="Add item" title="Add item" aria-haspopup="menu" aria-expanded={createMenuOpen} onclick={() => createMenuOpen = !createMenuOpen}><span class="add-glyph">+</span></button>
+          {#if createMenuOpen}
+            <div class="create-menu" role="menu" aria-label="Create item" use:createMenuAction in:fly={{ y: reducedMotion ? 0 : -6, duration: reducedMotion ? 0 : motion.fast, easing: easeOut }} out:fade={{ duration: reducedMotion ? 0 : motion.fast }}>
+              <button type="button" class="create-menu-item login" role="menuitem" onclick={() => startNewEntry('login')}><span class="create-menu-icon" aria-hidden="true">♙</span><span>Login</span></button>
+              <button type="button" class="create-menu-item card" role="menuitem" onclick={() => startNewEntry('creditCard')}><span class="create-menu-icon" aria-hidden="true">$</span><span>Card</span></button>
+              <button type="button" class="create-menu-item note" role="menuitem" onclick={() => startNewEntry('note')}><span class="create-menu-icon" aria-hidden="true">▧</span><span>Note</span></button>
+              <button type="button" class="create-menu-item other" role="menuitem" onclick={() => startNewEntry('custom')}><span class="create-menu-icon" aria-hidden="true">◇</span><span>Other</span></button>
+            </div>
+          {/if}
+        </div>
       </header>
       <div class="list-caption">
         <span>{filteredEntries.length} {filteredEntries.length === 1 ? 'ITEM' : 'ITEMS'}</span>
@@ -1021,7 +1104,7 @@
             <div class="empty-list">
               <span class="empty-illustration" aria-hidden="true"><i></i><i></i><span>◇</span></span>
               <strong>{search ? 'No matches found' : 'Your vault is ready'}</strong>
-              <p>{search ? 'Try a different search.' : 'Import a Proton Pass CSV from Settings or add your first login.'}</p>
+              <p>{search ? 'Try a different search.' : 'Import a Proton Pass CSV from Settings or add your first item.'}</p>
             </div>
           {/each}
         {/if}
@@ -1142,7 +1225,7 @@
         </div>
       {:else}
         <div class="detail-view welcome-view" in:fly={{ y: reducedMotion ? 0 : 10, duration: reducedMotion ? 0 : motion.base, easing: easeOut }} out:fade={{ duration: reducedMotion ? 0 : motion.fast }} bind:this={detailView}>
-          <div class="welcome-detail"><div class="welcome-glyph">p</div><span class="eyebrow">YOUR DIGITAL KEYS, ORGANIZED</span><h2>A calmer place<br />for your passwords.</h2><p>Select an item to view it, or start by adding your first login.</p><button class="primary-button" onclick={openNewEntry}>Add your first item <span>↗</span></button></div>
+          <div class="welcome-detail"><div class="welcome-glyph">p</div><span class="eyebrow">YOUR DIGITAL KEYS, ORGANIZED</span><h2>A calmer place<br />for your passwords.</h2><p>Select an item to view it, or start by adding your first item.</p><button class="primary-button" onclick={openCreateMenu}>Add your first item <span>↗</span></button></div>
         </div>
       {/if}
       {/key}
@@ -1174,74 +1257,71 @@
 {/if}
 
 {#if editorOpen}
-  <div class="modal-backdrop" class:login-backdrop={editing.kind === 'login'} role="presentation" onclick={(event) => { if (event.target === event.currentTarget) editorOpen = false; }} in:fade={{ duration: reducedMotion ? 0 : motion.fast }} out:fade={{ duration: reducedMotion ? 0 : motion.fast }}>
+  <div class="modal-backdrop composer-backdrop" role="presentation" onclick={(event) => { if (event.target === event.currentTarget) editorOpen = false; }} in:fade={{ duration: reducedMotion ? 0 : motion.fast }} out:fade={{ duration: reducedMotion ? 0 : motion.fast }}>
     <datalist id="saved-email-suggestions">
       {#each emailSuggestions as email}<option value={email}></option>{/each}
     </datalist>
-    {#if editing.kind === 'login'}
-      <div class="modal editor-modal login-modal" role="dialog" aria-modal="true" aria-labelledby="editor-title" tabindex="-1" use:dialogAction={() => editorOpen = false}>
-        <form onsubmit={saveEntry} class="editor-form login-composer">
-          <header class="login-topbar">
-            <button type="button" class="login-close" aria-label="Close" onclick={() => editorOpen = false}>×</button>
-            <button type="submit" class="primary-button login-submit">{editing.id ? 'Save login' : 'Create login'}</button>
-          </header>
-          <h2 id="editor-title" class="sr-only">{editing.id ? 'Edit login' : 'New login'}</h2>
-          <label class="login-title-field"><span>Title</span><input bind:value={editing.title} placeholder="Untitled" required /></label>
-          <section class="login-credentials" aria-label="Login credentials">
-            <label class="login-row"><span class="login-row-icon" aria-hidden="true">♙</span><span class="login-row-content"><strong>Email or username</strong><input value={loginIdentifier} oninput={(event) => setLoginIdentifier(event.currentTarget.value)} autocomplete="username" list="saved-email-suggestions" placeholder="Enter email or username" /></span></label>
-            <label class="login-row"><span class="login-row-icon" aria-hidden="true">⚿</span><span class="login-row-content"><strong>Password</strong><span class="login-password-control"><input bind:value={editing.password} type={editPasswordVisible ? 'text' : 'password'} autocomplete="new-password" placeholder="Enter password" /><button type="button" class="login-round-action" aria-label="Generate password" title="Generate password" onclick={generateIntoEntry}>⟳</button><button type="button" class="login-inline-action" onclick={() => editPasswordVisible = !editPasswordVisible}>{editPasswordVisible ? 'Hide' : 'Show'}</button></span></span></label>
-            <label class="login-row"><span class="login-row-icon" aria-hidden="true">♙</span><span class="login-row-content"><strong>2FA secret key (TOTP)</strong><input bind:value={editing.totpSecret} autocomplete="off" placeholder="Add 2FA secret key" /><small>Codes are generated locally from this key.</small></span></label>
+    <div class="modal composer-modal" role="dialog" aria-modal="true" aria-labelledby="editor-title" tabindex="-1" use:dialogAction={() => editorOpen = false}>
+      <form onsubmit={saveEntry} class="editor-form composer-form">
+        <header class="composer-topbar">
+          <button type="button" class="composer-close" aria-label="Close" onclick={() => editorOpen = false}>×</button>
+          <span class="composer-kind">{editing.id ? 'Editing' : 'New'} {itemKindLabel(editing.kind, false)}</span>
+          <button type="submit" class="primary-button composer-submit">{composerSubmitLabel()}</button>
+        </header>
+        <h2 id="editor-title" class="sr-only">{editing.id ? `Edit ${entryNoun(editing.kind)}` : `New ${entryNoun(editing.kind)}`}</h2>
+        <label class="composer-title-field"><span>Title</span><input bind:value={editing.title} placeholder={`Untitled ${entryNoun(editing.kind)}`} required /></label>
+        {#if editing.kind === 'login'}
+          <section class="composer-card" aria-label="Login credentials">
+            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">♙</span><span class="composer-row-content"><strong>Email or username</strong><input value={loginIdentifier} oninput={(event) => setLoginIdentifier(event.currentTarget.value)} autocomplete="username" list="saved-email-suggestions" placeholder="Enter email or username" /></span></label>
+            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">⚿</span><span class="composer-row-content"><strong>Password</strong><span class="composer-password-control"><input bind:value={editing.password} type={editPasswordVisible ? 'text' : 'password'} autocomplete="new-password" placeholder="Enter password" /><button type="button" class="composer-round-action" aria-label="Generate password" title="Generate password" onclick={generateIntoEntry}>⟳</button><button type="button" class="composer-inline-action" onclick={() => editPasswordVisible = !editPasswordVisible}>{editPasswordVisible ? 'Hide' : 'Show'}</button></span></span></label>
+            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">◷</span><span class="composer-row-content"><strong>2FA secret key (TOTP)</strong><input bind:value={editing.totpSecret} autocomplete="off" placeholder="Add 2FA secret key" /><small>Codes are generated locally from this key.</small></span></label>
           </section>
-          <section class="login-detail-card">
-            <label class="login-row login-card-row"><span class="login-row-icon" aria-hidden="true">◎</span><span class="login-row-content"><strong>Websites</strong><input bind:value={editing.url} placeholder="https://" autocomplete="url" /></span></label>
+          <section class="composer-card">
+            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">◎</span><span class="composer-row-content"><strong>Website</strong><input bind:value={editing.url} placeholder="https://" autocomplete="url" /></span></label>
           </section>
-          <section class="login-detail-card login-note-card">
-            <label class="login-row login-card-row"><span class="login-row-icon" aria-hidden="true">▱</span><span class="login-row-content"><strong>Note</strong><textarea bind:value={editing.notes} rows="2" placeholder="Add note"></textarea></span></label>
+          <section class="composer-card composer-note-card">
+            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">▱</span><span class="composer-row-content"><strong>Note</strong><textarea bind:value={editing.notes} rows="2" placeholder="Add note"></textarea></span></label>
           </section>
-          <button type="button" class="login-add-more" aria-expanded={showMoreLoginFields} onclick={() => showMoreLoginFields = !showMoreLoginFields}>{showMoreLoginFields ? '− Show less' : '+ Add more'}</button>
-          {#if showMoreLoginFields}
-            <section class="login-more-fields">
-              <label>Item type<select bind:value={editing.kind}><option value="login">Login</option><option value="note">Secure note</option><option value="alias">Email alias</option><option value="creditCard">Credit card</option><option value="identity">Identity</option><option value="custom">Custom item</option></select></label>
-              <label class="favorite-check"><input type="checkbox" bind:checked={editing.favorite} /> Add to favorites</label>
-              {#if editing.sourceVault}<label>Source Proton vault<input bind:value={editing.sourceVault} /></label>{/if}
-            </section>
-          {/if}
-          {#if error}<p class="error-message">{error}</p>{/if}
-        </form>
-      </div>
-    {:else}
-      <div class="modal editor-modal" role="dialog" aria-modal="true" aria-labelledby="editor-title" tabindex="-1" use:dialogAction={() => editorOpen = false} in:fly={{ y: reducedMotion ? 0 : 18, duration: reducedMotion ? 0 : motion.slow, easing: easeSpring }} out:fade={{ duration: reducedMotion ? 0 : motion.fast }}>
-        <header class="modal-header"><div><span class="eyebrow">{editing.id ? 'EDIT VAULT ITEM' : 'NEW VAULT ITEM'}</span><h2 id="editor-title">{editing.id ? 'Edit item' : 'Add an item'}</h2><p class="editor-subtitle">Keep important details together in your vault.</p></div><button class="icon-button" aria-label="Close" onclick={() => editorOpen = false}>×</button></header>
-        <form onsubmit={saveEntry} class="editor-form">
-          <div class="editor-basics">
-            <label>Item name<input bind:value={editing.title} placeholder="e.g. Personal email" required /></label>
-            <label>Item type<select bind:value={editing.kind}><option value="login">Login</option><option value="note">Secure note</option><option value="alias">Email alias</option><option value="creditCard">Credit card</option><option value="identity">Identity</option><option value="custom">Custom item</option></select></label>
-          </div>
-          {#if editing.kind === 'alias'}
-            <label>Email address<input bind:value={editing.email} autocomplete="off" list="saved-email-suggestions" /></label>
-            <label>Website<input bind:value={editing.url} placeholder="https://" /></label>
-          {:else if editing.kind === 'creditCard'}
-            <section class="editor-section" aria-label="Card details">
-              <div class="editor-section-heading"><span>CARD DETAILS</span><small>Stored encrypted on this device</small></div>
-              <div class="editor-grid">
-                <label class="editor-field-wide">Name on card<input bind:value={editing.cardHolder} autocomplete="off" spellcheck="false" placeholder="Name as shown on card" /></label>
-                <label class="editor-field-wide">Card number<input bind:value={editing.cardNumber} autocomplete="off" inputmode="numeric" spellcheck="false" placeholder="0000 0000 0000 0000" /></label>
-                <label>Expiration date<input bind:value={editing.cardExpiry} autocomplete="off" inputmode="numeric" spellcheck="false" placeholder="MM/YY" /></label>
-                <label>Security code<input bind:value={editing.cardCvv} autocomplete="off" inputmode="numeric" spellcheck="false" placeholder="CVV" /></label>
-                <label>PIN<input bind:value={editing.cardPin} autocomplete="off" inputmode="numeric" spellcheck="false" placeholder="PIN" /></label>
-              </div>
-            </section>
-          {:else if editing.kind !== 'note'}
-            <p class="field-hint">Imported fields are preserved in the notes below.</p>
-          {/if}
-          <label class="editor-notes">Notes<textarea bind:value={editing.notes} rows="3" placeholder="Add any helpful details…"></textarea></label>
-          {#if editing.sourceVault}<label>Source Proton vault<input bind:value={editing.sourceVault} /></label>{/if}
-          <label class="favorite-check"><input type="checkbox" bind:checked={editing.favorite} /> Add to favorites</label>
-          {#if error}<p class="error-message">{error}</p>{/if}
-          <footer class="modal-footer"><button type="button" class="secondary-button" onclick={() => editorOpen = false}>Cancel</button><button class="primary-button" type="submit">Save item <span>↗</span></button></footer>
-        </form>
-      </div>
-    {/if}
+        {:else if editing.kind === 'creditCard'}
+          <section class="composer-card" aria-label="Card details">
+            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">▤</span><span class="composer-row-content"><strong>Name on card</strong><input bind:value={editing.cardHolder} autocomplete="off" spellcheck="false" placeholder="Name as shown on card" /></span></label>
+            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">#</span><span class="composer-row-content"><strong>Card number</strong><input bind:value={editing.cardNumber} autocomplete="off" inputmode="numeric" spellcheck="false" placeholder="0000 0000 0000 0000" /></span></label>
+            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">◷</span><span class="composer-row-content"><strong>Expiration date</strong><input bind:value={editing.cardExpiry} autocomplete="off" inputmode="numeric" spellcheck="false" placeholder="MM/YY" /></span></label>
+            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">✳</span><span class="composer-row-content"><strong>Security code</strong><input bind:value={editing.cardCvv} autocomplete="off" inputmode="numeric" spellcheck="false" placeholder="CVV" /></span></label>
+            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">⌗</span><span class="composer-row-content"><strong>PIN</strong><input bind:value={editing.cardPin} autocomplete="off" inputmode="numeric" spellcheck="false" placeholder="PIN" /></span></label>
+          </section>
+          <section class="composer-card composer-note-card">
+            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">▱</span><span class="composer-row-content"><strong>Note</strong><textarea bind:value={editing.notes} rows="2" placeholder="Add note"></textarea></span></label>
+          </section>
+        {:else if editing.kind === 'note'}
+          <section class="composer-card composer-note-card composer-note-primary" aria-label="Secure note">
+            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">▱</span><span class="composer-row-content"><strong>Note</strong><textarea bind:value={editing.notes} rows="8" placeholder="Write your secure note…"></textarea></span></label>
+          </section>
+        {:else if editing.kind === 'alias'}
+          <section class="composer-card" aria-label="Email alias">
+            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">@</span><span class="composer-row-content"><strong>Email address</strong><input bind:value={editing.email} autocomplete="off" list="saved-email-suggestions" placeholder="name@example.com" /></span></label>
+            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">◎</span><span class="composer-row-content"><strong>Website</strong><input bind:value={editing.url} placeholder="https://" /></span></label>
+          </section>
+          <section class="composer-card composer-note-card">
+            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">▱</span><span class="composer-row-content"><strong>Note</strong><textarea bind:value={editing.notes} rows="2" placeholder="Add note"></textarea></span></label>
+          </section>
+        {:else}
+          <p class="composer-hint">Imported fields are preserved in the notes below.</p>
+          <section class="composer-card composer-note-card composer-note-primary">
+            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">▱</span><span class="composer-row-content"><strong>Note</strong><textarea bind:value={editing.notes} rows="8" placeholder="Add any helpful details…"></textarea></span></label>
+          </section>
+        {/if}
+        <button type="button" class="composer-add-more" aria-expanded={showMoreEntryFields} onclick={() => showMoreEntryFields = !showMoreEntryFields}>{showMoreEntryFields ? '− Show less' : '+ Add more'}</button>
+        {#if showMoreEntryFields}
+          <section class="composer-more-fields">
+            <label>Item type<select value={editing.kind} onchange={(event) => setEntryKind(event.currentTarget.value)}><option value="login">Login</option><option value="note">Secure note</option><option value="creditCard">Credit card</option>{#if editing.kind === 'alias'}<option value="alias">Email alias</option>{/if}{#if editing.kind === 'identity'}<option value="identity">Identity</option>{/if}<option value="custom">Custom item</option></select></label>
+            <label class="favorite-check"><input type="checkbox" bind:checked={editing.favorite} /> Add to favorites</label>
+            {#if editing.sourceVault}<label>Source Proton vault<input bind:value={editing.sourceVault} /></label>{/if}
+          </section>
+        {/if}
+        {#if error}<p class="error-message">{error}</p>{/if}
+      </form>
+    </div>
   </div>
 {/if}
 
