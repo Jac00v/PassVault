@@ -1,6 +1,19 @@
 # PassVault
 
-Passvault is a Windows-first, local-only password manager. The vault is encrypted on this device; there is no account, server, telemetry, or sync in v1.
+Passvault is a Windows-first, local-only password manager built with Tauri 2, Rust, and Svelte. The vault is encrypted on this device; there is no account, server, telemetry, or sync in v1.
+
+## Screenshots
+
+<p align="center">
+  <img src="img/passvault.png" alt="Passvault three-pane workspace showing navigation, a favorites list, and a login with a live TOTP code, email, and password" width="100%">
+</p>
+
+<p align="center"><sub>The workspace: navigation, searchable item list, and item details with live TOTP codes.</sub></p>
+
+| New login | Item type picker |
+|:---:|:---:|
+| <img src="img/passvault_create.png" alt="New login composer with fields for title, email or username, password, TOTP secret, website, and note" width="100%"> | <img src="img/passvault_dropdown.png" alt="New item menu offering Login, Card, Note, and Other" width="100%"> |
+| Compose logins with email, password, TOTP, website, and notes. | Pick Login, Card, Note, or Other when adding an item. |
 
 ## Features
 
