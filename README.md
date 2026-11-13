@@ -12,7 +12,7 @@ Passvault is a Windows-first, local-only password manager built with Tauri 2, Ru
 
 | New login | Item type picker |
 |:---:|:---:|
-| <img src="img/passvault_create.png" alt="New login composer with fields for title, email or username, password, TOTP secret, website, and note" width="100%"> | <img src="img/passvault_picker.png" alt="Zoomed view of the new item menu offering Login, Card, Note, and Other" width="100%"> |
+| <img src="img/passvault_create.png" alt="New login composer with fields for title, email or username, password, TOTP secret, website, and note" width="100%"> | <img src="img/passvault_dropdown.png" alt="New item menu offering Login, Card, Note, and Other" width="100%"> |
 | Compose logins with email, password, TOTP, website, and notes. | Pick Login, Card, Note, or Other when adding an item. |
 
 ## Features
