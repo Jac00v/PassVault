@@ -1204,7 +1204,7 @@
             <div class="totp-card refractive-glass">
               <span class="totp-icon">◷</span>
               <div class="totp-content">
-                <div class="totp-heading"><span class="totp-label">2FA TOKEN (TOTP)</span><span class="totp-live"><i></i>LIVE</span></div>
+                <div class="totp-heading"><span class="totp-label">2FA TOKEN (TOTP)</span></div>
                 {#if totpCode}
                   <div class="totp-code-row"><strong class="totp-code">{totpCode.slice(0, Math.floor(totpCode.length / 2))} {totpCode.slice(Math.floor(totpCode.length / 2))}</strong><button class="copy-code" class:done={copied === 'code'} onclick={() => copySecret(totpCode, 'code')}><span>{copied === 'code' ? 'Copied' : 'Copy'}</span><span class="copy-feedback" class:done={copied === 'code'} aria-hidden="true"><svg viewBox="0 0 16 16"><rect class="glyph-copy" x="5.5" y="5.5" width="7.5" height="7.5" rx="2"></rect><path class="glyph-check" d="M3.5 8.5 6.5 11.5 12.5 5"></path></svg></span></button></div>
                   <p class="totp-caption">Refreshes in {remaining}s</p>
