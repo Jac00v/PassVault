@@ -1116,7 +1116,7 @@
             <div class="empty-list">
               <span class="empty-illustration" aria-hidden="true"><i></i><i></i><span>◇</span></span>
               <strong>{search ? 'No matches found' : 'Your vault is ready'}</strong>
-              <p>{search ? 'Try a different search.' : 'Import a Proton Pass CSV from Settings or add your first item.'}</p>
+              <p>{search ? 'Try a different search.' : 'Import a CSV from Settings or add your first item.'}</p>
             </div>
           {/each}
         {/if}
@@ -1227,7 +1227,7 @@
             {#if selected.password}<div class="detail-field"><button class="field-copy-surface" aria-label="Copy password" onclick={() => copySecret(selected!.password, 'password')}></button><div class="field-top"><span>PASSWORD</span><div class="field-meta"><span class="copy-feedback" class:done={copied === 'password'} aria-hidden="true"><svg viewBox="0 0 16 16"><rect class="glyph-copy" x="5.5" y="5.5" width="7.5" height="7.5" rx="2"></rect><path class="glyph-check" d="M3.5 8.5 6.5 11.5 12.5 5"></path></svg></span><div class="field-actions"><button onclick={togglePasswordReveal}>{showPassword ? 'Hide' : 'Reveal'}</button></div></div></div><p class="detail-value secret-value" class:revealed={showPassword}>{showPassword ? selected.password : '••••••••••••••••'}</p>{#if showPassword}<span class="reveal-countdown">Hides automatically</span>{/if}</div>{/if}
             {#if selected.url}<div class="detail-field"><button class="field-copy-surface" aria-label="Copy website address" onclick={() => copySecret(selected!.url, 'url')}></button><div class="field-top"><span>WEBSITE</span><div class="field-meta"><span class="copy-feedback" class:done={copied === 'url'} aria-hidden="true"><svg viewBox="0 0 16 16"><rect class="glyph-copy" x="5.5" y="5.5" width="7.5" height="7.5" rx="2"></rect><path class="glyph-check" d="M3.5 8.5 6.5 11.5 12.5 5"></path></svg></span><button title="Open website" onclick={() => { const url = externalUrl(selected!.url); if (url) void openUrl(url); }}>Open ↗</button></div></div><p class="detail-value">{selected.url}</p></div>{/if}
             {#if selected.notes}<div class="detail-field notes-field"><button class="field-copy-surface" aria-label="Copy notes" onclick={() => copySecret(selected!.notes, 'notes')}></button><div class="field-top"><span>NOTES</span><span class="copy-feedback" class:done={copied === 'notes'} aria-hidden="true"><svg viewBox="0 0 16 16"><rect class="glyph-copy" x="5.5" y="5.5" width="7.5" height="7.5" rx="2"></rect><path class="glyph-check" d="M3.5 8.5 6.5 11.5 12.5 5"></path></svg></span></div><p class="detail-value">{selected.notes}</p></div>{/if}
-            {#if selected.sourceVault}<div class="detail-field"><div class="field-top"><span>PROTON VAULT</span></div><p>{selected.sourceVault}</p></div>{/if}
+            {#if selected.sourceVault}<div class="detail-field"><div class="field-top"><span>SOURCE VAULT</span></div><p>{selected.sourceVault}</p></div>{/if}
             {#if !selected.username && !selected.email && !selected.password && !selected.url && !selected.notes && !selected.totpSecret && !selected.cardNumber && !selected.cardHolder && !selected.cardExpiry && !selected.cardCvv && !selected.cardPin && !selected.sourceVault}<div class="detail-empty">Nothing saved in this item yet.</div>{/if}
           </div>
           <div class="detail-security"><span class="security-check">✓</span><span>Encrypted and stored locally</span><span class="detail-separator">·</span><span class:security-warning={!keepUnlocked && autoLockRemaining <= autoLockWarningMs}>{autoLockLabel()}</span>{#if !keepUnlocked && !autoLockPaused}<span class="autolock-meter" aria-hidden="true"><span style={`width:${Math.round((autoLockRemaining / autoLockMs) * 100)}%`}></span></span>{/if}</div>
@@ -1326,7 +1326,7 @@
           <section class="composer-more-fields">
             <label>Item type<select value={editing.kind} onchange={(event) => setEntryKind(event.currentTarget.value)}><option value="login">Login</option><option value="note">Secure note</option><option value="creditCard">Credit card</option>{#if editing.kind === 'alias'}<option value="alias">Email alias</option>{/if}{#if editing.kind === 'identity'}<option value="identity">Identity</option>{/if}<option value="custom">Custom item</option></select></label>
             <label class="favorite-check"><input type="checkbox" bind:checked={editing.favorite} /> Add to favorites</label>
-            {#if editing.sourceVault}<label>Source Proton vault<input bind:value={editing.sourceVault} /></label>{/if}
+            {#if editing.sourceVault}<label>Source vault<input bind:value={editing.sourceVault} /></label>{/if}
           </section>
         {/if}
         {#if error}<p class="error-message">{error}</p>{/if}

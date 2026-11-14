@@ -20,6 +20,10 @@
   let message = '';
   let foundLabel = '';
   let lastActivityPing = 0;
+  let pointerX = 0;
+  let pointerY = 0;
+  let pointerVisible = false;
+  let customPointer = false;
 
   $: hasSelection = selection.width >= 1 && selection.height >= 1;
   $: selectionStyle = frameWidth > 0 && frameHeight > 0
@@ -49,6 +53,15 @@
     };
   }
 
+  function trackPointer(event: PointerEvent) {
+    if (!stage) return;
+    const bounds = stage.getBoundingClientRect();
+    pointerX = clamp(event.clientX - bounds.left, 0, bounds.width);
+    pointerY = clamp(event.clientY - bounds.top, 0, bounds.height);
+    pointerVisible = true;
+    customPointer = true;
+  }
+
   function pingActivity() {
     const now = Date.now();
     if (now - lastActivityPing < 2000) return;
@@ -72,6 +85,7 @@
 
   function beginSelection(event: PointerEvent) {
     if (event.button !== 0 || status === 'loading' || status === 'scanning' || status === 'closing') return;
+    trackPointer(event);
     pingActivity();
     previousSelection = { ...selection };
     dragStart = framePoint(event);
@@ -90,6 +104,7 @@
   }
 
   function updateSelection(event: PointerEvent) {
+    trackPointer(event);
     pingActivity();
     if (!dragStart) return;
     if (event.buttons === 0) {
@@ -100,6 +115,7 @@
   }
 
   function endSelection(event: PointerEvent) {
+    trackPointer(event);
     if (!dragStart) return;
     pingActivity();
     const next = normalizeRect(dragStart, framePoint(event));
@@ -122,7 +138,12 @@
   }
 
   function onPointerLeave() {
+    pointerVisible = false;
     if (dragStart) stopDragWithoutScan();
+  }
+
+  function onPointerEnter(event: PointerEvent) {
+    trackPointer(event);
   }
 
   function selectionRequest() {
@@ -292,6 +313,7 @@
 <div
   bind:this={stage}
   class="stage"
+  class:custom-pointer={customPointer}
   role="application"
   aria-label="Select the 2FA QR code region"
   tabindex="-1"
@@ -300,6 +322,7 @@
   onpointerup={endSelection}
   onpointercancel={abortSelection}
   onpointerleave={onPointerLeave}
+  onpointerenter={onPointerEnter}
 >
   <canvas bind:this={canvas} aria-hidden="true"></canvas>
 
@@ -333,6 +356,14 @@
     </div>
     <button type="button" class="cancel" disabled={status === 'closing'} onclick={cancelScan}>Cancel</button>
   </div>
+
+  {#if pointerVisible}
+    <div
+      class="pointer-marker"
+      style={`left:${pointerX}px;top:${pointerY}px;`}
+      aria-hidden="true"
+    ></div>
+  {/if}
 </div>
 
 <style>
@@ -350,14 +381,6 @@
     -webkit-user-select: none;
   }
 
-  .stage,
-  .stage canvas,
-  .shade-layer,
-  .shade,
-  .veil {
-    cursor: crosshair;
-  }
-
   .stage {
     position: fixed;
     inset: 0;
@@ -365,6 +388,14 @@
     background: #000;
     cursor: crosshair;
     touch-action: none;
+  }
+
+  .stage.custom-pointer,
+  .stage.custom-pointer * {
+    /* Once the page-drawn marker is visible it is the only pointer. Hiding
+       the native cursor prevents WebView2's stuck/hidden cursor from showing
+       a second marker in the middle of the screen. */
+    cursor: none !important;
   }
 
   .stage:focus {
@@ -399,6 +430,38 @@
     position: absolute;
     inset: 0;
     background: rgba(2, 8, 12, .38);
+  }
+
+  .pointer-marker {
+    position: absolute;
+    z-index: 50;
+    width: 22px;
+    height: 22px;
+    margin: -11px 0 0 -11px;
+    pointer-events: none;
+    filter: drop-shadow(0 0 1px rgba(0, 0, 0, .95));
+  }
+
+  .pointer-marker::before,
+  .pointer-marker::after {
+    position: absolute;
+    content: "";
+    background: #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .9);
+  }
+
+  .pointer-marker::before {
+    top: 1px;
+    left: 10px;
+    width: 2px;
+    height: 20px;
+  }
+
+  .pointer-marker::after {
+    top: 10px;
+    left: 1px;
+    width: 20px;
+    height: 2px;
   }
 
   .hud {
