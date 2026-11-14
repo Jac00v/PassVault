@@ -29,6 +29,8 @@ use windows::Win32::Security::Cryptography::{
 };
 use zeroize::{Zeroize, Zeroizing};
 
+mod qr_scan;
+
 const VAULT_VERSION: u32 = 1;
 const KDF_MEMORY_KIB: u32 = 65_536;
 const KDF_ITERATIONS: u32 = 3;
@@ -1272,6 +1274,7 @@ pub fn run() {
                 remembered_key_path: app_data.join("remembered-unlock-key.bin"),
                 unlocked: Mutex::new(None),
             });
+            app.manage(qr_scan::QrScanState::default());
             #[cfg(windows)]
             if let Some(window) = app.get_webview_window("main") {
                 use_rounded_window_corners(&window);
@@ -1302,7 +1305,14 @@ pub fn run() {
             current_totp,
             generate_password,
             export_backup,
-            restore_backup
+            restore_backup,
+            qr_scan::scan_qr_from_screen,
+            qr_scan::qr_overlay_frame,
+            qr_scan::qr_overlay_ready,
+            qr_scan::qr_overlay_activity,
+            qr_scan::qr_scan_region,
+            qr_scan::qr_scan_submit,
+            qr_scan::qr_scan_cancel
         ])
         .run(tauri::generate_context!())
         .expect("Passvault failed to start");

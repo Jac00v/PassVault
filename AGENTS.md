@@ -12,10 +12,14 @@ Passvault is a Windows-first Tauri 2 desktop password manager. The Svelte fronte
 - `src/styles.css`: global styles, light/dark palettes, responsive layout, and the visual system.
 - `src/main.ts`: Svelte mount and global stylesheet import.
 - `src-tauri/src/lib.rs`: Rust app state, every Tauri command, vault format/crypto, persistence, CSV import, TOTP, password generation, backups, and Rust unit tests.
+- `src-tauri/src/qr_scan.rs`: TOTP screen-scan subsystem: per-monitor capture, overlay window lifecycle, `rqrr` decoding, `otpauth` parsing and label sanitization, scan timeouts, and unit tests.
 - `src-tauri/src/main.rs`: binary entry point.
+- `qr.html`: page shell for the screen-scan overlay windows.
+- `src/qr-overlay.ts`: mounts `QrOverlay.svelte` into `qr.html`.
+- `src/QrOverlay.svelte`: frozen-frame canvas, drag/keyboard region selection, and scan confirmation/cancel UI. Uses scoped styles only and does not import `styles.css`.
 - `src-tauri/tauri.conf.json`: window, CSP, frontend build commands, and installer targets.
-- `src-tauri/capabilities/default.json`: permissions for the `main` window. Custom Rust command registration is in `lib.rs`, not this capability file.
-- `package.json`, `vite.config.ts`, `tsconfig.json`, `src-tauri/Cargo.toml`: toolchain and build configuration.
+- `src-tauri/capabilities/default.json`: permissions for the `main` window. Custom Rust command registration is in `lib.rs`, not this capability file. Overlay windows have no capability entry; see `docs/SECURITY.md` for what that does and does not restrict.
+- `package.json`, `vite.config.ts`, `tsconfig.json`, `src-tauri/Cargo.toml`: toolchain and build configuration. `vite.config.ts` declares a multi-page build input (`index.html` and `qr.html`).
 
 Keep changes localized to these existing files unless there is a clear need to introduce a new module or component. Avoid unnecessary architectural layers.
 

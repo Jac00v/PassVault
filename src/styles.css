@@ -890,10 +890,12 @@ html[data-theme="dark"] .text-action:hover { color: #c3eedf; background: rgba(75
 }
 .composer-form .composer-row-content input::placeholder, .composer-form .composer-row-content textarea::placeholder { color: #8695a7; }
 .composer-row-content small { color: #7c8d9e; font-size: 10px; font-weight: 400; }
-.composer-password-control { display: flex; min-width: 0; align-items: center; gap: 8px; }
-.composer-password-control input { flex: 1; min-width: 0; }
+.composer-password-control, .composer-totp-control { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.composer-password-control input, .composer-totp-control input { flex: 1; min-width: 0; }
 .composer-inline-action { padding: 5px 8px; border: 0; border-radius: 8px; color: #347668; background: transparent; font-size: 11px; cursor: pointer; }
 .composer-round-action { width: 38px; min-height: 38px; flex: 0 0 auto; font-size: 21px; cursor: pointer; }
+.composer-round-action svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; }
+.composer-round-action:disabled { opacity: .55; cursor: default; }
 .composer-detail-card { padding: 0 17px; }
 .composer-card-row { padding-right: 0; padding-left: 0; }
 .composer-card-row .composer-row-content { padding: 3px 0 2px; }

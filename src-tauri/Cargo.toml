@@ -18,17 +18,24 @@ base64 = "0.22"
 chacha20poly1305 = "0.10"
 csv = "1.3"
 data-encoding = "2.6"
+percent-encoding = "2.3"
 rand = "0.8"
 rfd = "0.15"
+rqrr = { version = "0.11", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 totp-rs = { version = "5", features = ["otpauth", "zeroize"] }
+unicode-general-category = "1.1"
 uuid = { version = "1", features = ["v4"] }
 url = "2"
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Security_Cryptography"] }
+xcap = { version = "0.9", default-features = false }
 zeroize = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+qrcode = { version = "0.14", default-features = false }
 
 [profile.release]
 lto = true

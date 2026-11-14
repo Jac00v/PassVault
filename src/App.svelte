@@ -119,6 +119,8 @@
   let editorOpen = false;
   let editing: Entry = blankEntry();
   let editPasswordVisible = false;
+  let qrScanning = false;
+  let totpInput: HTMLInputElement | undefined;
   let showMoreEntryFields = false;
   let loginIdentifier = '';
   let importPreview: Preview | null = null;
@@ -540,6 +542,24 @@
       editing.password = await invoke<string>('generate_password', { length: 20, symbols: true });
     } catch (cause) {
       error = errorMessage(cause);
+    }
+  }
+
+  async function scanTotpFromScreen() {
+    if (qrScanning || locking || mode !== 'ready' || !editorOpen) return;
+    error = '';
+    qrScanning = true;
+    try {
+      const result = await invoke<{ value: string; label: string | null } | null>('scan_qr_from_screen');
+      if (!result || mode !== 'ready' || !editorOpen) return;
+      editing.totpSecret = result.value;
+      showToast(result.label ? `2FA key captured from screen · ${result.label}` : '2FA key captured from screen', false, true);
+      await tick();
+      totpInput?.focus();
+    } catch (cause) {
+      if (mode === 'ready' && editorOpen) error = errorMessage(cause);
+    } finally {
+      qrScanning = false;
     }
   }
 
@@ -1264,7 +1284,7 @@
           <section class="composer-card" aria-label="Login credentials">
             <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">♙</span><span class="composer-row-content"><strong>Email or username</strong><input value={loginIdentifier} oninput={(event) => setLoginIdentifier(event.currentTarget.value)} autocomplete="username" list="saved-email-suggestions" placeholder="Enter email or username" /></span></label>
             <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">⚿</span><span class="composer-row-content"><strong>Password</strong><span class="composer-password-control"><input bind:value={editing.password} type={editPasswordVisible ? 'text' : 'password'} autocomplete="new-password" placeholder="Enter password" /><button type="button" class="composer-round-action" aria-label="Generate password" title="Generate password" onclick={generateIntoEntry}>⟳</button><button type="button" class="composer-inline-action" onclick={() => editPasswordVisible = !editPasswordVisible}>{editPasswordVisible ? 'Hide' : 'Show'}</button></span></span></label>
-            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">◷</span><span class="composer-row-content"><strong>2FA secret key (TOTP)</strong><input bind:value={editing.totpSecret} autocomplete="off" placeholder="Add 2FA secret key" /><small>Codes are generated locally from this key.</small></span></label>
+            <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">◷</span><span class="composer-row-content"><strong>2FA secret key (TOTP)</strong><span class="composer-totp-control"><input bind:this={totpInput} bind:value={editing.totpSecret} autocomplete="off" placeholder="Add 2FA secret key" /><button type="button" class="composer-round-action" aria-label="Scan 2FA QR code from screen" title="Scan 2FA QR code from screen" aria-busy={qrScanning} disabled={qrScanning} onclick={scanTotpFromScreen}><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.15"></circle><path d="M10.05 10.05 13.6 13.6"></path></svg></button></span><small>Codes are generated locally from this key.</small></span></label>
           </section>
           <section class="composer-card">
             <label class="composer-row"><span class="composer-row-icon" aria-hidden="true">◎</span><span class="composer-row-content"><strong>Website</strong><input bind:value={editing.url} placeholder="https://" autocomplete="url" /></span></label>
