@@ -15,6 +15,7 @@
   let selection = { x: 0, y: 0, width: 0, height: 0 };
   let previousSelection = { x: 0, y: 0, width: 0, height: 0 };
   let dragStart: { x: number; y: number } | undefined;
+  let dragResetTimer: ReturnType<typeof setTimeout> | undefined;
   let status: Status = 'loading';
   let message = '';
   let foundLabel = '';
@@ -55,6 +56,20 @@
     void invoke('qr_overlay_activity').catch(() => undefined);
   }
 
+  function clearDragReset() {
+    if (dragResetTimer !== undefined) {
+      clearTimeout(dragResetTimer);
+      dragResetTimer = undefined;
+    }
+  }
+
+  function armDragReset() {
+    clearDragReset();
+    dragResetTimer = setTimeout(() => {
+      if (dragStart) stopDragWithoutScan();
+    }, 20_000);
+  }
+
   function beginSelection(event: PointerEvent) {
     if (event.button !== 0 || status === 'loading' || status === 'scanning' || status === 'closing') return;
     pingActivity();
@@ -64,13 +79,23 @@
     message = '';
     foundLabel = '';
     selection = { x: dragStart.x, y: dragStart.y, width: 0, height: 0 };
-    stage?.setPointerCapture(event.pointerId);
+    armDragReset();
     event.preventDefault();
+  }
+
+  function stopDragWithoutScan() {
+    dragStart = undefined;
+    clearDragReset();
+    status = 'selecting';
   }
 
   function updateSelection(event: PointerEvent) {
     pingActivity();
     if (!dragStart) return;
+    if (event.buttons === 0) {
+      stopDragWithoutScan();
+      return;
+    }
     selection = normalizeRect(dragStart, framePoint(event));
   }
 
@@ -79,6 +104,7 @@
     pingActivity();
     const next = normalizeRect(dragStart, framePoint(event));
     dragStart = undefined;
+    clearDragReset();
     if (next.width < minimumSelection || next.height < minimumSelection) {
       selection = { ...previousSelection };
       status = 'selecting';
@@ -89,10 +115,14 @@
   }
 
   function abortSelection() {
-    if (!dragStart) return;
     dragStart = undefined;
+    clearDragReset();
     selection = { ...previousSelection };
     status = 'selecting';
+  }
+
+  function onPointerLeave() {
+    if (dragStart) stopDragWithoutScan();
   }
 
   function selectionRequest() {
@@ -240,9 +270,22 @@
   }
 
   onMount(() => {
+    const onWindowPointerUp = () => {
+      if (dragStart) abortSelection();
+    };
+    const onWindowBlur = () => {
+      if (dragStart) abortSelection();
+    };
     window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('pointerup', onWindowPointerUp);
+    window.addEventListener('blur', onWindowBlur);
     void loadFrame();
-    return () => window.removeEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('pointerup', onWindowPointerUp);
+      window.removeEventListener('blur', onWindowBlur);
+      clearDragReset();
+    };
   });
 </script>
 
@@ -256,6 +299,7 @@
   onpointermove={updateSelection}
   onpointerup={endSelection}
   onpointercancel={abortSelection}
+  onpointerleave={onPointerLeave}
 >
   <canvas bind:this={canvas} aria-hidden="true"></canvas>
 
@@ -304,6 +348,14 @@
     font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
     user-select: none;
     -webkit-user-select: none;
+  }
+
+  .stage,
+  .stage canvas,
+  .shade-layer,
+  .shade,
+  .veil {
+    cursor: crosshair;
   }
 
   .stage {
