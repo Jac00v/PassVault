@@ -899,14 +899,6 @@
     return initials(entry.title);
   }
 
-  function protonDate(value: string): string {
-    if (!value) return '';
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return value;
-    const milliseconds = numeric > 1_000_000_000_000 ? numeric : numeric * 1000;
-    return new Date(milliseconds).toLocaleString();
-  }
-
   function externalUrl(value: string): string | null {
     try {
       const url = new URL(value.includes('://') ? value : `https://${value}`);
@@ -1216,9 +1208,7 @@
             {#if selected.url}<div class="detail-field"><button class="field-copy-surface" aria-label="Copy website address" onclick={() => copySecret(selected!.url, 'url')}></button><div class="field-top"><span>WEBSITE</span><div class="field-meta"><span class="copy-feedback" class:done={copied === 'url'} aria-hidden="true"><svg viewBox="0 0 16 16"><rect class="glyph-copy" x="5.5" y="5.5" width="7.5" height="7.5" rx="2"></rect><path class="glyph-check" d="M3.5 8.5 6.5 11.5 12.5 5"></path></svg></span><button title="Open website" onclick={() => { const url = externalUrl(selected!.url); if (url) void openUrl(url); }}>Open ↗</button></div></div><p class="detail-value">{selected.url}</p></div>{/if}
             {#if selected.notes}<div class="detail-field notes-field"><button class="field-copy-surface" aria-label="Copy notes" onclick={() => copySecret(selected!.notes, 'notes')}></button><div class="field-top"><span>NOTES</span><span class="copy-feedback" class:done={copied === 'notes'} aria-hidden="true"><svg viewBox="0 0 16 16"><rect class="glyph-copy" x="5.5" y="5.5" width="7.5" height="7.5" rx="2"></rect><path class="glyph-check" d="M3.5 8.5 6.5 11.5 12.5 5"></path></svg></span></div><p class="detail-value">{selected.notes}</p></div>{/if}
             {#if selected.sourceVault}<div class="detail-field"><div class="field-top"><span>PROTON VAULT</span></div><p>{selected.sourceVault}</p></div>{/if}
-            {#if selected.sourceCreatedAt}<div class="detail-field"><div class="field-top"><span>ORIGINAL CREATION DATE</span></div><p>{protonDate(selected.sourceCreatedAt)}</p></div>{/if}
-            {#if selected.sourceModifiedAt}<div class="detail-field"><div class="field-top"><span>LAST MODIFIED IN PROTON</span></div><p>{protonDate(selected.sourceModifiedAt)}</p></div>{/if}
-            {#if !selected.username && !selected.email && !selected.password && !selected.url && !selected.notes && !selected.totpSecret && !selected.cardNumber && !selected.cardHolder && !selected.cardExpiry && !selected.cardCvv && !selected.cardPin && !selected.sourceVault && !selected.sourceCreatedAt && !selected.sourceModifiedAt}<div class="detail-empty">Nothing saved in this item yet.</div>{/if}
+            {#if !selected.username && !selected.email && !selected.password && !selected.url && !selected.notes && !selected.totpSecret && !selected.cardNumber && !selected.cardHolder && !selected.cardExpiry && !selected.cardCvv && !selected.cardPin && !selected.sourceVault}<div class="detail-empty">Nothing saved in this item yet.</div>{/if}
           </div>
           <div class="detail-security"><span class="security-check">✓</span><span>Encrypted and stored locally</span><span class="detail-separator">·</span><span class:security-warning={!keepUnlocked && autoLockRemaining <= autoLockWarningMs}>{autoLockLabel()}</span>{#if !keepUnlocked && !autoLockPaused}<span class="autolock-meter" aria-hidden="true"><span style={`width:${Math.round((autoLockRemaining / autoLockMs) * 100)}%`}></span></span>{/if}</div>
         </div>
