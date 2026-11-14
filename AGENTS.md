@@ -16,7 +16,7 @@ Passvault is a Windows-first Tauri 2 desktop password manager. The Svelte fronte
 - `src-tauri/src/main.rs`: binary entry point.
 - `qr.html`: page shell for the screen-scan overlay windows.
 - `src/qr-overlay.ts`: mounts `QrOverlay.svelte` into `qr.html`.
-- `src/QrOverlay.svelte`: frozen-frame canvas, drag/keyboard region selection, and scan confirmation/cancel UI. Uses scoped styles only and does not import `styles.css`.
+- `src/QrOverlay.svelte`: frozen-frame canvas, drag/keyboard region selection, automatic submit on a successful decode, and cancellation UI. Uses scoped styles only and does not import `styles.css`.
 - `src-tauri/tauri.conf.json`: window, CSP, frontend build commands, and installer targets.
 - `src-tauri/capabilities/default.json`: permissions for the `main` window. Custom Rust command registration is in `lib.rs`, not this capability file. Overlay windows have no capability entry; see `docs/SECURITY.md` for what that does and does not restrict.
 - `package.json`, `vite.config.ts`, `tsconfig.json`, `src-tauri/Cargo.toml`: toolchain and build configuration. `vite.config.ts` declares a multi-page build input (`index.html` and `qr.html`).

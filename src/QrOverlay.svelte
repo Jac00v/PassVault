@@ -3,7 +3,7 @@
   import { invoke } from '@tauri-apps/api/core';
 
   type ScanRegionResult = { ok: boolean; label?: string | null; message?: string | null };
-  type Status = 'loading' | 'selecting' | 'scanning' | 'confirming' | 'error' | 'closing';
+  type Status = 'loading' | 'selecting' | 'scanning' | 'error' | 'closing';
 
   const minimumSelection = 8;
   const defaultNoQrMessage = 'No QR code found in that area — try a tighter box';
@@ -13,13 +13,14 @@
   let frameWidth = 0;
   let frameHeight = 0;
   let selection = { x: 0, y: 0, width: 0, height: 0 };
-  let previousSelection = selection;
+  let previousSelection = { x: 0, y: 0, width: 0, height: 0 };
   let dragStart: { x: number; y: number } | undefined;
   let status: Status = 'loading';
   let message = '';
   let foundLabel = '';
   let lastActivityPing = 0;
 
+  $: hasSelection = selection.width >= 1 && selection.height >= 1;
   $: selectionStyle = frameWidth > 0 && frameHeight > 0
     ? `left:${(selection.x / frameWidth) * 100}%;top:${(selection.y / frameHeight) * 100}%;width:${(selection.width / frameWidth) * 100}%;height:${(selection.height / frameHeight) * 100}%;`
     : '';
@@ -111,21 +112,23 @@
     foundLabel = '';
     try {
       const result = await invoke<ScanRegionResult>('qr_scan_region', selectionRequest());
+      if (isClosing()) return;
       if (result.ok) {
         foundLabel = result.label ?? '';
-        status = 'confirming';
+        await submitSelection();
       } else {
         message = result.message || defaultNoQrMessage;
         status = 'error';
       }
     } catch (cause) {
+      if (isClosing()) return;
       message = typeof cause === 'string' && cause ? cause : 'The QR code could not be read.';
       status = 'error';
     }
   }
 
   async function submitSelection() {
-    if (status !== 'confirming' || frameWidth === 0) return;
+    if (status === 'closing' || frameWidth === 0) return;
     status = 'closing';
     try {
       await invoke('qr_scan_submit');
@@ -141,8 +144,12 @@
     void invoke('qr_scan_cancel').catch(() => undefined);
   }
 
+  function isClosing(): boolean {
+    return status === 'closing';
+  }
+
   function moveSelection(event: KeyboardEvent) {
-    if (!event.key.startsWith('Arrow') || frameWidth === 0 || frameHeight === 0) return false;
+    if (!event.key.startsWith('Arrow') || !hasSelection || frameWidth === 0 || frameHeight === 0) return false;
     const step = Math.max(8, Math.round(Math.min(frameWidth, frameHeight) / 100));
 
     if (event.shiftKey) {
@@ -177,12 +184,6 @@
   function onKeyDown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
       event.preventDefault();
-      if (status === 'confirming') {
-        status = 'selecting';
-        message = '';
-        foundLabel = '';
-        return;
-      }
       cancelScan();
       return;
     }
@@ -190,26 +191,14 @@
     if (event.key === 'Enter') {
       if ((event.target as HTMLElement | null)?.tagName === 'BUTTON') return;
       event.preventDefault();
-      if (status === 'confirming') void submitSelection();
-      else if (status !== 'scanning' && status !== 'closing' && status !== 'loading') void scanSelection();
+      if (hasSelection && status !== 'scanning' && status !== 'closing' && status !== 'loading') {
+        void scanSelection();
+      }
       return;
     }
 
     if (status === 'scanning' || status === 'closing' || status === 'loading') return;
     moveSelection(event);
-  }
-
-  function initSelection() {
-    const side = Math.round(Math.min(frameWidth, frameHeight) * 0.6);
-    const width = clamp(side, minimumSelection, frameWidth);
-    const height = clamp(side, minimumSelection, frameHeight);
-    selection = {
-      x: Math.round((frameWidth - width) / 2),
-      y: Math.round((frameHeight - height) / 2),
-      width,
-      height,
-    };
-    previousSelection = { ...selection };
   }
 
   async function loadFrame() {
@@ -235,7 +224,6 @@
         0,
         0,
       );
-      initSelection();
       await tick();
       await new Promise((resolve) => setTimeout(resolve, 30));
       await invoke('qr_overlay_ready');
@@ -261,7 +249,6 @@
 <div
   bind:this={stage}
   class="stage"
-  class:found={status === 'confirming'}
   role="application"
   aria-label="Select the 2FA QR code region"
   tabindex="-1"
@@ -273,7 +260,11 @@
   <canvas bind:this={canvas} aria-hidden="true"></canvas>
 
   <div class="shade-layer" aria-hidden="true">
-    <div class="shade" style={selectionStyle}></div>
+    {#if hasSelection}
+      <div class="shade" style={selectionStyle}></div>
+    {:else}
+      <div class="veil"></div>
+    {/if}
   </div>
 
   <div class="hud" role="group" aria-label="Screen scan controls" onpointerdown={(event) => event.stopPropagation()}>
@@ -282,16 +273,18 @@
         <strong>Preparing the screen…</strong>
       {:else if status === 'scanning'}
         <strong>Reading the QR code…</strong>
-      {:else if status === 'confirming'}
-        <strong>Found {foundLabel || 'a 2FA setup code'} — Enter to add, Esc to keep selecting</strong>
       {:else if status === 'error'}
         <strong>{message || defaultNoQrMessage}</strong>
         <span>Drag a new box, or press Esc to cancel.</span>
       {:else if status === 'closing'}
-        <strong>Adding the 2FA key…</strong>
+        <strong>Adding {foundLabel || 'the 2FA key'}…</strong>
       {:else}
         <strong>Drag a box around the QR code</strong>
-        <span>Arrows move · Shift + arrows resize · Enter scans · Esc cancels</span>
+        {#if hasSelection}
+          <span>Arrows move · Shift + arrows resize · Enter rescans · Esc cancels</span>
+        {:else}
+          <span>Draw tightly around the code · Esc cancels</span>
+        {/if}
       {/if}
     </div>
     <button type="button" class="cancel" disabled={status === 'closing'} onclick={cancelScan}>Cancel</button>
@@ -350,9 +343,10 @@
     transition: border-color 160ms ease, box-shadow 160ms ease;
   }
 
-  .stage.found .shade {
-    border-color: rgba(173, 247, 202, .98);
-    box-shadow: 0 0 0 100vmax rgba(2, 8, 12, .58), 0 0 18px rgba(126, 236, 186, .6);
+  .veil {
+    position: absolute;
+    inset: 0;
+    background: rgba(2, 8, 12, .38);
   }
 
   .hud {

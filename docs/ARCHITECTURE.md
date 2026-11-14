@@ -23,7 +23,7 @@ qr.html -> src/qr-overlay.ts -> src/QrOverlay.svelte -> Tauri IPC -> src-tauri/s
 - `src-tauri/src/main.rs`: calls the library's `run()` entry point.
 - `qr.html`: page shell for the screen-scan overlay windows.
 - `src/qr-overlay.ts`: mounts `QrOverlay.svelte` into `qr.html`.
-- `src/QrOverlay.svelte`: frozen-frame canvas, drag/keyboard region selection, confirmation and cancellation UI. It has scoped styles and does not import `styles.css`.
+- `src/QrOverlay.svelte`: frozen-frame canvas, drag/keyboard region selection, automatic submit on a successful decode, and cancellation UI. It has scoped styles and does not import `styles.css`.
 - `src-tauri/tauri.conf.json`: development/build hooks, window configuration, CSP, and Windows NSIS/MSI targets.
 - `src-tauri/capabilities/default.json`: core/window/opener permissions assigned to the `main` webview. Overlay windows have no capability entry; see `docs/SECURITY.md` for what that does and does not restrict.
 - `vite.config.ts`: Svelte plugin, dev-server port, and the multi-page build input (`index.html` and `qr.html`).
@@ -90,6 +90,7 @@ App.svelte: invoke scan_qr_from_screen
      -> overlay: qr_scan_region    (frame-relative pixel rect)
           -> crop to luma, decode passes (rqrr), parse otpauth
           -> session stores the decoded value; overlay receives {ok,label,message}
+          -> on success the overlay automatically calls qr_scan_submit
      -> overlay: qr_scan_submit | qr_scan_cancel
   -> qr_scan.rs: close overlays, zeroize/drop frames, restore and focus "main"
   -> promise resolves with {value,label} or null
@@ -103,7 +104,7 @@ The overlay displays a screenshot taken after the vault window hides, not live s
 
 Each overlay is a borderless, always-on-top, non-resizable, taskbar-skipping window created at the monitor's physical geometry and pointed at `WebviewUrl::App("qr.html")`. Its inner size is the physical size divided by the monitor scale factor; pointer positions are mapped through the canvas backing size, so mixed-DPI layouts need no device-pixel-ratio assumptions. The overlay reports a selection in frozen-frame pixel coordinates and Rust performs the crop, so decode results do not depend on window CSS size.
 
-Selection starts as a centred box sized to 60% of the smaller frame dimension. Arrow keys move it, `Shift`+arrows resize it, `Enter` scans or confirms, and `Esc` cancels (or steps back from confirmation). Input activity is reported to `qr_overlay_activity`, throttled to one call every two seconds in the overlay.
+Selection starts empty: the overlay shows only a dimmed frozen frame until you drag a box, and a successful decode submits the captured key automatically. After a failed scan the box is kept; arrow keys move it, `Shift`+arrows resize it, `Enter` rescans it, and `Esc` cancels. Input activity is reported to `qr_overlay_activity`, throttled to one call every two seconds in the overlay.
 
 The session ends on submit, cancel, a closed/destroyed overlay, or a timeout. A ready watchdog aborts if no overlay becomes ready within 10 seconds, an idle timeout aborts after 90 seconds without overlay input, and a hard cap ends the session after 3 minutes. A `ScanCleanup` `Drop` guard closes overlays and restores/focuses the vault window on every exit path, including capture errors. Overlay windows also get a Rust-side `on_window_event` cancel handler, because a destroyed webview cannot call `qr_scan_cancel`. A region decode is single-flight per session; a second request while one is running returns "Still reading the last selection".
 

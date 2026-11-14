@@ -23,7 +23,7 @@ Passvault is a Windows-first, local-only password manager built with Tauri 2, Ru
 - Switch between persistent light and dark themes in Settings.
 - Import Proton Pass CSV exports with a preview, unsupported-column warnings, and possible-duplicate detection. Login email, username, TOTP, notes, item type, source vault, and original timestamps are retained; card note payloads are mapped into card fields, while alias, identity, and custom-item note payloads are preserved.
 - Generate passwords with guaranteed selected character classes and no adjacent repeated characters, search and favorite items, and copy secrets with a 30-second clipboard clear attempt.
-- Scan a TOTP setup QR code from the screen: the vault window hides, each monitor shows a frozen frame, and you draw a box around the code and confirm to fill the 2FA key field. Default setups are stored as a bare Base32 secret; custom algorithm, digit, or period settings are stored as an `otpauth://` URI.
+- Scan a TOTP setup QR code from the screen: the vault window hides, each monitor shows a frozen frame, and you draw a box around the code to fill the 2FA key field. Default setups are stored as a bare Base32 secret; custom algorithm, digit, or period settings are stored as an `otpauth://` URI.
 - Automatically lock after 15 minutes of inactivity.
 - Export and restore an encrypted `.passvault` backup.
 
